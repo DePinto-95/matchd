@@ -78,7 +78,7 @@ All sport metadata (team sizes, colors, icons, default duration) lives in `const
 
 ## Git & GitHub Workflow
 
-This project uses Git with GitHub (repo: `DePinto-95/sportsmeet`). **After every meaningful unit of work, commit and push.**
+This project uses Git with GitHub (repo: `DePinto-95/matchd`). **After every meaningful unit of work, commit and push.**
 
 Rules:
 - Commit after each logical feature, screen, or fix — not after every file save, not after huge multi-feature batches
@@ -88,7 +88,7 @@ Rules:
 - Never commit `.env.local` or any file containing secrets
 
 ```bash
-git add sportsmeet/<changed files>
+git add matchd/<changed files>
 git commit -m "feat: description of what was implemented"
 git push origin main
 ```
