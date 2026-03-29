@@ -88,7 +88,7 @@ export default function PostMatchRatingScreen() {
         <Text style={{ color: theme.colors.textMuted, fontSize: 15, textAlign: 'center' }}>
           No players to rate for this match.
         </Text>
-        <Button label="Done" onPress={handleFinish} style={{ marginTop: 16 }} />
+        <Button label="Done" onPress={handleFinish} />
       </View>
     );
   }
