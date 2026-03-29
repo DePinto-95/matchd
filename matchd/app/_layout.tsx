@@ -1,59 +1,126 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+import React, { useEffect } from 'react';
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useAuthStore } from '@/stores/authStore';
+import { theme } from '@/constants/theme';
+import '../global.css';
 
-import { useColorScheme } from '@/components/useColorScheme';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
-  });
-
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { session, profile, initialized } = useAuthStore();
+  const segments = useSegments();
+  const router = useRouter();
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    if (!initialized) return;
+
+    const inAuth = segments[0] === '(auth)';
+
+    if (!session) {
+      // Not logged in → go to login
+      if (!inAuth) router.replace('/(auth)/login');
+    } else if (!profile) {
+      // Logged in but no profile → onboarding
+      if (segments[1] !== 'onboarding') router.replace('/(auth)/onboarding');
+    } else {
+      // Logged in with profile → main app
+      if (inAuth) router.replace('/(tabs)');
     }
-  }, [loaded]);
+  }, [session, profile, initialized, segments]);
 
-  if (!loaded) {
-    return null;
-  }
-
-  return <RootLayoutNav />;
+  return <>{children}</>;
 }
 
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+export default function RootLayout() {
+  const initialize = useAuthStore((s) => s.initialize);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    initialize().then((fn) => { cleanup = fn; });
+    return () => cleanup?.();
+  }, []);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+    <AuthGuard>
+      <StatusBar style="light" />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.background } }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="match/[id]"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+            headerTitle: '',
+            headerBackTitle: 'Back',
+            presentation: 'card',
+          }}
+        />
+        <Stack.Screen
+          name="match/post-match-rating"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+            headerTitle: 'Rate Players',
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="player/[id]"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+            headerTitle: '',
+          }}
+        />
+        <Stack.Screen
+          name="venue/[id]"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+            headerTitle: '',
+          }}
+        />
+        <Stack.Screen
+          name="venue/dashboard"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+            headerTitle: 'Venue Dashboard',
+          }}
+        />
+        <Stack.Screen
+          name="squad/index"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+            headerTitle: 'My Squads',
+          }}
+        />
+        <Stack.Screen
+          name="squad/[id]"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+            headerTitle: 'Squad',
+          }}
+        />
+        <Stack.Screen
+          name="sport/[sport]"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+            headerTitle: '',
+          }}
+        />
       </Stack>
-    </ThemeProvider>
+    </AuthGuard>
   );
 }
