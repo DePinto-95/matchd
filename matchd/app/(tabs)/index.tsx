@@ -12,7 +12,6 @@ import { useMatchStore } from '@/stores/matchStore';
 import { theme } from '@/constants/theme';
 import { FilterBar } from '@/components/FilterBar';
 import { MatchCard } from '@/components/MatchCard';
-import { SportType } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
@@ -29,7 +28,6 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} edges={['top']}>
-      {/* Header */}
       <View
         style={{
           flexDirection: 'row',
@@ -51,10 +49,8 @@ export default function HomeScreen() {
         <Ionicons name="location-outline" size={22} color={theme.colors.textMuted} />
       </View>
 
-      {/* Sport Filters */}
       <FilterBar selected={filters.sport} onSelect={(sport) => setFilters({ sport })} />
 
-      {/* Match List */}
       {loading && matches.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color={theme.colors.primary} size="large" />

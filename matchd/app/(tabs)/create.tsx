@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Alert,
   Switch,
   TextInput,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -25,14 +26,14 @@ import { Button } from '@/components/ui/Button';
 import { Ionicons } from '@expo/vector-icons';
 
 const schema = z.object({
-  title: z.string().min(3, 'Title too short').max(60),
-  location_name: z.string().min(3, 'Location required'),
+  title: z.string().min(3, 'Title must be at least 3 characters').max(60),
+  location_name: z.string().min(3, 'Please enter the match location'),
   description: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
 
-const STEP_LABELS = ['Sport', 'Location', 'Details', 'Settings'];
+const STEP_LABELS = ['Sport', 'Details', 'Date & Time', 'Settings'];
 
 export default function CreateMatchScreen() {
   const router = useRouter();
@@ -44,35 +45,133 @@ export default function CreateMatchScreen() {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [duration, setDuration] = useState(60);
-  const [minRating, setMinRating] = useState(1);
-  const [maxRating, setMaxRating] = useState(10);
+  const [minRating, setMinRating] = useState('1');
+  const [maxRating, setMaxRating] = useState('10');
+  const [maxPlayers, setMaxPlayers] = useState(10);
   const [isPrivate, setIsPrivate] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const { control, handleSubmit, formState: { errors }, getValues } = useForm<FormData>({
+  const { control, handleSubmit, formState: { errors }, getValues, trigger, setValue } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
   const teamSizes = sport ? SPORTS[sport].teamSizes : [5];
 
-  const handleNext = () => {
-    if (step === 0 && !sport) {
-      Alert.alert('Please select a sport');
-      return;
+  const formatDate = (text: string) => {
+    const digits = text.replace(/\D/g, '').slice(0, 6);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+  };
+
+  const formatTime = (text: string) => {
+    const digits = text.replace(/\D/g, '').slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  };
+
+  const validateDate = (d: string): string | null => {
+    const parts = d.split('/');
+    if (parts.length !== 3 || parts[2].length < 2) return 'Please enter a complete date (DD/MM/YY).';
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const year = 2000 + parseInt(parts[2], 10);
+    if (month < 1 || month > 12) return 'Month must be between 01 and 12.';
+    const daysInMonth = new Date(year, month, 0).getDate();
+    if (day < 1 || day > daysInMonth) return `Day must be between 01 and ${daysInMonth} for that month.`;
+    const parsed = new Date(year, month - 1, day);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (parsed < today) return 'The match date cannot be in the past.';
+    return null;
+  };
+
+  const validateTime = (t: string): string | null => {
+    const parts = t.split(':');
+    if (parts.length !== 2 || parts[1].length < 2) return 'Please enter a complete time (HH:MM).';
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    if (hours < 0 || hours > 23) return 'Hours must be between 00 and 23.';
+    if (minutes < 0 || minutes > 59) return 'Minutes must be between 00 and 59.';
+    return null;
+  };
+
+  const handleNext = async () => {
+    if (step === 0) {
+      if (!sport) {
+        Alert.alert('Select a sport', 'Please choose a sport before continuing.');
+        return;
+      }
+      // Pre-fill title with sport name if still empty
+      if (!getValues('title')) {
+        setValue('title', `${SPORTS[sport].label} Match`);
+      }
     }
+
+    if (step === 1) {
+      const valid = await trigger(['title', 'location_name']);
+      if (!valid) return;
+    }
+
+    if (step === 2) {
+      if (!date || !time) {
+        Alert.alert('Required', 'Please enter both a date and a time for the match.');
+        return;
+      }
+      const dateError = validateDate(date);
+      if (dateError) {
+        Alert.alert('Invalid Date', dateError);
+        return;
+      }
+      const timeError = validateTime(time);
+      if (timeError) {
+        Alert.alert('Invalid Time', timeError);
+        return;
+      }
+    }
+
     setStep((s) => Math.min(s + 1, 3));
   };
 
   const handleBack = () => setStep((s) => Math.max(s - 1, 0));
 
+  const handleCancel = () => router.replace('/(tabs)');
+
+  useEffect(() => {
+    const onBackPress = () => {
+      if (step > 0) {
+        handleBack();
+      } else {
+        router.replace('/(tabs)');
+      }
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [step]);
+
   const onSubmit = async (data: FormData) => {
     if (!user || !sport) return;
 
-    // Parse date/time
-    const scheduledAt = date && time ? new Date(`${date}T${time}`).toISOString() : new Date(Date.now() + 3600000).toISOString();
+    const minR = parseFloat(minRating);
+    const maxR = parseFloat(maxRating);
+    if (!minRating || !maxRating || isNaN(minR) || isNaN(maxR)) {
+      Alert.alert('Rating Required', 'Please enter both a minimum and maximum rating (1 to 10).');
+      return;
+    }
+    if (minR < 1 || minR > 10 || maxR < 1 || maxR > 10) {
+      Alert.alert('Invalid Rating', 'Ratings must be between 1 and 10.');
+      return;
+    }
+    if (minR > maxR) {
+      Alert.alert('Invalid Rating', 'The minimum rating cannot be higher than the maximum rating.');
+      return;
+    }
+
+    const [dd, mm, yy] = date.split('/');
+    const scheduledAt = new Date(`20${yy}-${mm}-${dd}T${time}:00`).toISOString();
 
     setLoading(true);
-    const maxPlayers = teamSize * 2;
     const inviteCode = isPrivate ? generateInviteCode() : null;
 
     const { data: match, error } = await supabase
@@ -87,8 +186,8 @@ export default function CreateMatchScreen() {
         duration_minutes: duration,
         max_players: maxPlayers,
         team_size: teamSize,
-        min_rating: minRating,
-        max_rating: maxRating,
+        min_rating: minR,
+        max_rating: maxR,
         is_private: isPrivate,
         invite_code: inviteCode,
         status: 'open',
@@ -102,13 +201,11 @@ export default function CreateMatchScreen() {
       return;
     }
 
-    // Create home/away teams
     await supabase.from('match_teams').insert([
       { match_id: match.id, side: 'home', name: 'Home' },
       { match_id: match.id, side: 'away', name: 'Away' },
     ]);
 
-    // Get home team id and add creator
     const { data: teams } = await supabase
       .from('match_teams')
       .select('id, side')
@@ -148,7 +245,9 @@ export default function CreateMatchScreen() {
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
         ) : (
-          <View style={{ width: 24 }} />
+          <TouchableOpacity onPress={handleCancel}>
+            <Ionicons name="close" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
         )}
         <View style={{ flex: 1 }}>
           <Text style={{ color: theme.colors.text, fontSize: 20, fontWeight: '800' }}>
@@ -158,7 +257,6 @@ export default function CreateMatchScreen() {
             Step {step + 1} of 4 — {STEP_LABELS[step]}
           </Text>
         </View>
-        {/* Progress dots */}
         <View style={{ flexDirection: 'row', gap: 4 }}>
           {STEP_LABELS.map((_, i) => (
             <View
@@ -183,43 +281,63 @@ export default function CreateMatchScreen() {
           <View style={{ gap: 20 }}>
             <SportSelector selected={sport} onSelect={setSport} />
             {sport && (
-              <View style={{ gap: 8 }}>
-                <Text style={{ color: theme.colors.textMuted, fontSize: 13, fontWeight: '500' }}>
-                  Team Size
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {teamSizes.map((size) => (
-                    <TouchableOpacity
-                      key={size}
-                      onPress={() => setTeamSize(size)}
-                      style={{
-                        paddingHorizontal: 16,
-                        paddingVertical: 10,
-                        borderRadius: theme.radius.md,
-                        backgroundColor:
-                          teamSize === size ? theme.colors.primary + '22' : theme.colors.surface,
-                        borderWidth: 1.5,
-                        borderColor:
-                          teamSize === size ? theme.colors.primary : theme.colors.border,
-                      }}
-                    >
-                      <Text
+              <View style={{ gap: 16 }}>
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: theme.colors.textMuted, fontSize: 13, fontWeight: '500' }}>
+                    Team Size
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {teamSizes.map((size) => (
+                      <TouchableOpacity
+                        key={size}
+                        onPress={() => { setTeamSize(size); setMaxPlayers(size * 2); }}
                         style={{
-                          color: teamSize === size ? theme.colors.primary : theme.colors.textMuted,
-                          fontWeight: '600',
+                          paddingHorizontal: 16,
+                          paddingVertical: 10,
+                          borderRadius: theme.radius.md,
+                          backgroundColor:
+                            teamSize === size ? theme.colors.primary + '22' : theme.colors.surface,
+                          borderWidth: 1.5,
+                          borderColor:
+                            teamSize === size ? theme.colors.primary : theme.colors.border,
                         }}
                       >
-                        {size}v{size}
-                      </Text>
+                        <Text
+                          style={{
+                            color: teamSize === size ? theme.colors.primary : theme.colors.textMuted,
+                            fontWeight: '600',
+                          }}
+                        >
+                          {size}v{size}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Max Players */}
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: theme.colors.textMuted, fontSize: 13, fontWeight: '500' }}>
+                    Max Players
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                    <TouchableOpacity onPress={() => setMaxPlayers((p) => Math.max(2, p - 1))}>
+                      <Ionicons name="remove-circle-outline" size={30} color={theme.colors.primary} />
                     </TouchableOpacity>
-                  ))}
+                    <Text style={{ color: theme.colors.text, fontSize: 20, fontWeight: '700', minWidth: 32, textAlign: 'center' }}>
+                      {maxPlayers}
+                    </Text>
+                    <TouchableOpacity onPress={() => setMaxPlayers((p) => p + 1)}>
+                      <Ionicons name="add-circle-outline" size={30} color={theme.colors.primary} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             )}
           </View>
         )}
 
-        {/* Step 1: Location & Title */}
+        {/* Step 1: Title, Location, Description */}
         {step === 1 && (
           <View style={{ gap: 16 }}>
             <Controller
@@ -227,7 +345,7 @@ export default function CreateMatchScreen() {
               name="title"
               render={({ field: { onChange, value } }) => (
                 <Input
-                  label="Match Title"
+                  label="Match Title *"
                   value={value}
                   onChangeText={onChange}
                   placeholder={`${sportConfig?.label ?? 'Match'} at the park`}
@@ -241,7 +359,7 @@ export default function CreateMatchScreen() {
               name="location_name"
               render={({ field: { onChange, value } }) => (
                 <Input
-                  label="Location"
+                  label="Location *"
                   value={value}
                   onChangeText={onChange}
                   placeholder="Stadium, park, court name..."
@@ -287,17 +405,19 @@ export default function CreateMatchScreen() {
         {step === 2 && (
           <View style={{ gap: 16 }}>
             <Input
-              label="Date (YYYY-MM-DD)"
+              label="Date * (DD/MM/YY)"
               value={date}
-              onChangeText={setDate}
-              placeholder={new Date().toISOString().split('T')[0]}
+              onChangeText={(t) => setDate(formatDate(t))}
+              placeholder="30/03/26"
+              keyboardType="numeric"
               leftIcon="calendar-outline"
             />
             <Input
-              label="Time (HH:MM)"
+              label="Time * (HH:MM)"
               value={time}
-              onChangeText={setTime}
+              onChangeText={(t) => setTime(formatTime(t))}
               placeholder="18:00"
+              keyboardType="numeric"
               leftIcon="time-outline"
             />
 
@@ -347,24 +467,26 @@ export default function CreateMatchScreen() {
                 Rating Range
               </Text>
               <Text style={{ color: theme.colors.textMuted, fontSize: 13 }}>
-                Only players with a rating between {minRating}.0 and {maxRating}.0 can join.
+                Only players with a rating between {minRating || '?'} and {maxRating || '?'} can join.
               </Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>
                   <Input
-                    label="Min Rating"
-                    value={String(minRating)}
-                    onChangeText={(v) => setMinRating(Math.min(Number(v) || 1, maxRating))}
+                    label="Min Rating *"
+                    value={minRating}
+                    onChangeText={(v) => setMinRating(v.replace(/[^0-9.]/g, ''))}
                     keyboardType="numeric"
+                    placeholder="1"
                     leftIcon="star-outline"
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Input
-                    label="Max Rating"
-                    value={String(maxRating)}
-                    onChangeText={(v) => setMaxRating(Math.max(Number(v) || 10, minRating))}
+                    label="Max Rating *"
+                    value={maxRating}
+                    onChangeText={(v) => setMaxRating(v.replace(/[^0-9.]/g, ''))}
                     keyboardType="numeric"
+                    placeholder="10"
                     leftIcon="star"
                   />
                 </View>
@@ -386,10 +508,10 @@ export default function CreateMatchScreen() {
             >
               <View style={{ gap: 2 }}>
                 <Text style={{ color: theme.colors.text, fontSize: 15, fontWeight: '600' }}>
-                  Private Match
+                  Invite Only
                 </Text>
                 <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>
-                  Only joinable via invite link
+                  Random players cannot join — share the invite link with your squad
                 </Text>
               </View>
               <Switch
@@ -411,14 +533,16 @@ export default function CreateMatchScreen() {
                 }}
               >
                 <Text style={{ color: theme.colors.textMuted, fontSize: 12, fontWeight: '600' }}>
-                  MATCH SUMMARY
+                  MATCH SUMMARY{isPrivate ? '  ·  🔒 INVITE ONLY' : ''}
                 </Text>
                 <Text style={{ color: theme.colors.text, fontSize: 14 }}>
-                  {SPORTS[sport].emoji} {SPORTS[sport].label} · {teamSize}v{teamSize} ·{' '}
-                  {teamSize * 2} players max
+                  {SPORTS[sport].emoji} {SPORTS[sport].label} · {teamSize}v{teamSize} · {maxPlayers} players max
                 </Text>
                 <Text style={{ color: theme.colors.text, fontSize: 14 }}>
                   📍 {getValues('location_name') || '—'}
+                </Text>
+                <Text style={{ color: theme.colors.text, fontSize: 14 }}>
+                  📅 {date} at {time}
                 </Text>
                 <Text style={{ color: theme.colors.text, fontSize: 14 }}>
                   ⏱ {duration} minutes

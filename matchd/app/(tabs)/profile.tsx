@@ -49,26 +49,6 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
         {/* Header actions */}
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', padding: 16 }}>
-          {displayProfile.account_type === 'venue' && (
-            <TouchableOpacity
-              onPress={() => router.push('/venue/dashboard')}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                backgroundColor: theme.colors.surface,
-                borderRadius: theme.radius.full,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                marginRight: 8,
-              }}
-            >
-              <Ionicons name="grid-outline" size={16} color={theme.colors.textMuted} />
-              <Text style={{ color: theme.colors.textMuted, fontSize: 13 }}>Dashboard</Text>
-            </TouchableOpacity>
-          )}
           <TouchableOpacity
             onPress={() => router.push('/squad/index')}
             style={{

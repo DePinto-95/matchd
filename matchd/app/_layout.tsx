@@ -6,26 +6,22 @@ import { theme } from '@/constants/theme';
 import '../global.css';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { session, profile, initialized } = useAuthStore();
+  const { session, profile, initialized, profileLoading } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    if (!initialized) return;
+    if (!initialized || profileLoading) return;
 
     const inAuth = segments[0] === '(auth)';
 
     if (!session) {
-      // Not logged in → go to login
       if (!inAuth) router.replace('/(auth)/login');
-    } else if (!profile) {
-      // Logged in but no profile → onboarding
-      if (segments[1] !== 'onboarding') router.replace('/(auth)/onboarding');
-    } else {
-      // Logged in with profile → main app
+    } else if (profile) {
       if (inAuth) router.replace('/(tabs)');
     }
-  }, [session, profile, initialized, segments]);
+    // If session exists but profile is null, fetchProfile is creating it — wait.
+  }, [session, profile, initialized, profileLoading, segments]);
 
   return <>{children}</>;
 }
@@ -45,6 +41,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.background } }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="confirm" options={{ headerShown: false }} />
         <Stack.Screen
           name="match/[id]"
           options={{

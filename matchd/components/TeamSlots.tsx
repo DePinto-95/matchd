@@ -21,40 +21,61 @@ export const TeamSlots: React.FC<TeamSlotsProps> = ({ teams, participants, teamS
   const renderSlots = (teamParticipants: MatchParticipant[], color: string) => {
     return Array.from({ length: teamSize }).map((_, i) => {
       const participant = teamParticipants[i];
-      if (participant?.profiles) {
+
+      if (!participant) {
         return (
           <View key={i} style={{ alignItems: 'center', gap: 4, width: 56 }}>
-            <Avatar
-              uri={participant.profiles.avatar_url}
-              name={participant.profiles.full_name ?? participant.profiles.username}
-              size={44}
-            />
-            <Text
-              style={{ color: theme.colors.textMuted, fontSize: 10 }}
-              numberOfLines={1}
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                borderWidth: 1.5,
+                borderColor: color + '55',
+                borderStyle: 'dashed',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              {participant.profiles.username}
-            </Text>
+              <Ionicons name="person-add-outline" size={16} color={color + '88'} />
+            </View>
+            <Text style={{ color: theme.colors.textMuted, fontSize: 10 }}>Open</Text>
           </View>
         );
       }
+
+      if (participant.status === 'reserved') {
+        return (
+          <View key={i} style={{ alignItems: 'center', gap: 4, width: 56 }}>
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                borderWidth: 1.5,
+                borderColor: theme.colors.warning + '88',
+                backgroundColor: theme.colors.warning + '18',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="lock-closed" size={16} color={theme.colors.warning} />
+            </View>
+            <Text style={{ color: theme.colors.warning, fontSize: 10 }}>Reserved</Text>
+          </View>
+        );
+      }
+
       return (
         <View key={i} style={{ alignItems: 'center', gap: 4, width: 56 }}>
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              borderWidth: 1.5,
-              borderColor: color + '55',
-              borderStyle: 'dashed',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="person-add-outline" size={16} color={color + '88'} />
-          </View>
-          <Text style={{ color: theme.colors.textMuted, fontSize: 10 }}>Open</Text>
+          <Avatar
+            uri={participant.profiles?.avatar_url}
+            name={participant.profiles?.full_name ?? participant.profiles?.username ?? '?'}
+            size={44}
+          />
+          <Text style={{ color: theme.colors.textMuted, fontSize: 10 }} numberOfLines={1}>
+            {participant.profiles?.username ?? '—'}
+          </Text>
         </View>
       );
     });
@@ -62,12 +83,9 @@ export const TeamSlots: React.FC<TeamSlotsProps> = ({ teams, participants, teamS
 
   return (
     <View style={{ gap: 16 }}>
-      {/* VS Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
-        <Text style={{ color: theme.colors.textMuted, fontSize: 13, fontWeight: '600' }}>
-          VS
-        </Text>
+        <Text style={{ color: theme.colors.textMuted, fontSize: 13, fontWeight: '600' }}>VS</Text>
         <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
       </View>
 
@@ -80,17 +98,16 @@ export const TeamSlots: React.FC<TeamSlotsProps> = ({ teams, participants, teamS
               {homeTeam?.name ?? 'Home'}
             </Text>
             <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>
-              {homeParticipants.length}/{teamSize}
+              {homeParticipants.filter((p) => p.status === 'confirmed').length}/{teamSize}
             </Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', maxWidth: 300 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
               {renderSlots(homeParticipants, '#3b82f6')}
             </View>
           </ScrollView>
         </View>
 
-        {/* Divider */}
         <View style={{ width: 1, backgroundColor: theme.colors.border }} />
 
         {/* Away Team */}
@@ -101,11 +118,11 @@ export const TeamSlots: React.FC<TeamSlotsProps> = ({ teams, participants, teamS
               {awayTeam?.name ?? 'Away'}
             </Text>
             <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>
-              {awayParticipants.length}/{teamSize}
+              {awayParticipants.filter((p) => p.status === 'confirmed').length}/{teamSize}
             </Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', maxWidth: 300 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
               {renderSlots(awayParticipants, '#f97316')}
             </View>
           </ScrollView>

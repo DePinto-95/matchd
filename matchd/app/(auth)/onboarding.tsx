@@ -25,19 +25,26 @@ const OPTIONS: { type: AccountType; emoji: string; title: string; description: s
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { user, fetchProfile } = useAuthStore();
+  const { fetchProfile } = useAuthStore();
   const [selected, setSelected] = useState<AccountType>('player');
   const [loading, setLoading] = useState(false);
 
   const handleContinue = async () => {
-    if (!user) return;
     setLoading(true);
 
-    const { data: authUser } = await supabase.auth.getUser();
-    const username = authUser.user?.user_metadata?.username ?? `user_${user.id.slice(0, 6)}`;
+    const { data: authData } = await supabase.auth.getUser();
+    const authUser = authData.user;
+
+    if (!authUser) {
+      setLoading(false);
+      Alert.alert('Error', 'Session not found. Please go back and sign in again.');
+      return;
+    }
+
+    const username = authUser.user_metadata?.username ?? `user_${authUser.id.slice(0, 6)}`;
 
     const { error } = await supabase.from('profiles').upsert({
-      id: user.id,
+      id: authUser.id,
       account_type: selected,
       username,
     });
@@ -49,7 +56,7 @@ export default function OnboardingScreen() {
       return;
     }
 
-    await fetchProfile(user.id);
+    await fetchProfile(authUser.id);
     router.replace('/(tabs)');
   };
 

@@ -35,6 +35,9 @@ export default function MatchDetailScreen() {
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
+  const [joinPanelOpen, setJoinPanelOpen] = useState(false);
+  const [selectedSide, setSelectedSide] = useState<'home' | 'away' | null>(null);
+  const [squadSpots, setSquadSpots] = useState(1);
 
   const loadMatch = useCallback(async () => {
     if (!id) return;
@@ -55,10 +58,10 @@ export default function MatchDetailScreen() {
   const isPast = match ? isMatchPast(match.scheduled_at, match.duration_minutes) : false;
 
   const handleJoin = async () => {
-    if (!match || !user) return;
+    if (!match || !user || !selectedSide) return;
     setJoining(true);
 
-    // Check rating eligibility
+    // Rating check
     const { data: userRating } = await supabase
       .from('player_ratings')
       .select('rating')
@@ -71,18 +74,22 @@ export default function MatchDetailScreen() {
       setJoining(false);
       Alert.alert(
         'Rating Required',
-        `This match requires a ${match.sport} rating between ${match.min_rating} and ${match.max_rating}. Your current rating is ${rating.toFixed(1)}.`
+        `This match requires a rating between ${match.min_rating} and ${match.max_rating}. Your current rating is ${rating.toFixed(1)}.`
       );
       return;
     }
 
-    // Pick team with fewer players
-    const homeTeam = match.match_teams?.find((t) => t.side === 'home');
-    const awayTeam = match.match_teams?.find((t) => t.side === 'away');
-    const homePlayers = match.match_participants?.filter((p) => p.team_id === homeTeam?.id).length ?? 0;
-    const awayPlayers = match.match_participants?.filter((p) => p.team_id === awayTeam?.id).length ?? 0;
-    const targetTeam = homePlayers <= awayPlayers ? homeTeam : awayTeam;
+    const targetTeam = match.match_teams?.find((t) => t.side === selectedSide);
 
+    // Check available spots on that team
+    const currentOnTeam = match.match_participants?.filter((p) => p.team_id === targetTeam?.id).length ?? 0;
+    if (currentOnTeam + squadSpots > match.team_size) {
+      setJoining(false);
+      Alert.alert('Not enough spots', `${match.team_size - currentOnTeam} spot(s) left on that team.`);
+      return;
+    }
+
+    // Insert own confirmed spot
     const { error } = await supabase.from('match_participants').insert({
       match_id: match.id,
       player_id: user.id,
@@ -90,11 +97,35 @@ export default function MatchDetailScreen() {
       status: 'confirmed',
     });
 
-    setJoining(false);
     if (error) {
+      setJoining(false);
       Alert.alert('Error', error.message);
-    } else {
-      loadMatch();
+      return;
+    }
+
+    // Insert reserved spots for the rest of the squad
+    if (squadSpots > 1) {
+      const reservedRows = Array.from({ length: squadSpots - 1 }).map(() => ({
+        match_id: match.id,
+        player_id: user.id,
+        team_id: targetTeam?.id ?? null,
+        status: 'reserved',
+      }));
+      await supabase.from('match_participants').insert(reservedRows);
+    }
+
+    setJoining(false);
+    setJoinPanelOpen(false);
+    setSelectedSide(null);
+    setSquadSpots(1);
+    loadMatch();
+
+    if (squadSpots > 1) {
+      Alert.alert(
+        'Squad spots reserved!',
+        `You joined and reserved ${squadSpots - 1} extra spot(s) for your squad. Share the match link so they can fill them.`,
+        [{ text: 'Share', onPress: handleShare }, { text: 'OK' }]
+      );
     }
   };
 
@@ -332,9 +363,89 @@ export default function MatchDetailScreen() {
           borderTopColor: theme.colors.border,
           padding: 16,
           paddingBottom: 28,
-          gap: 10,
+          gap: 12,
         }}
       >
+        {/* Join panel — team selector + squad stepper */}
+        {joinPanelOpen && !isPast && !isParticipant && (() => {
+          const homeTeam = match.match_teams?.find((t) => t.side === 'home');
+          const awayTeam = match.match_teams?.find((t) => t.side === 'away');
+          const homeCount = match.match_participants?.filter((p) => p.team_id === homeTeam?.id).length ?? 0;
+          const awayCount = match.match_participants?.filter((p) => p.team_id === awayTeam?.id).length ?? 0;
+          const homeOpen = match.team_size - homeCount;
+          const awayOpen = match.team_size - awayCount;
+          const selectedTeamOpen = selectedSide === 'home' ? homeOpen : selectedSide === 'away' ? awayOpen : 0;
+
+          return (
+            <View style={{ gap: 12 }}>
+              <Text style={{ color: theme.colors.text, fontSize: 14, fontWeight: '700' }}>
+                Choose your side
+              </Text>
+
+              {/* Team cards */}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[
+                  { side: 'home' as const, label: homeTeam?.name ?? 'Home', count: homeCount, open: homeOpen, color: '#3b82f6' },
+                  { side: 'away' as const, label: awayTeam?.name ?? 'Away', count: awayCount, open: awayOpen, color: '#f97316' },
+                ].map(({ side, label, count, open, color }) => {
+                  const isSelected = selectedSide === side;
+                  const full = open === 0;
+                  return (
+                    <TouchableOpacity
+                      key={side}
+                      onPress={() => { if (!full) { setSelectedSide(side); setSquadSpots(1); } }}
+                      style={{
+                        flex: 1,
+                        padding: 12,
+                        borderRadius: theme.radius.md,
+                        borderWidth: 2,
+                        borderColor: isSelected ? color : full ? theme.colors.border + '44' : theme.colors.border,
+                        backgroundColor: isSelected ? color + '18' : theme.colors.surface,
+                        opacity: full ? 0.45 : 1,
+                        gap: 4,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />
+                      <Text style={{ color: isSelected ? color : theme.colors.text, fontWeight: '700', fontSize: 13 }}>
+                        {label}
+                      </Text>
+                      <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>
+                        {count}/{match.team_size} · {open} open
+                      </Text>
+                      {full && <Text style={{ color: theme.colors.error, fontSize: 10 }}>Full</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Squad spots stepper (only when a side is selected) */}
+              {selectedSide && selectedTeamOpen > 1 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Text style={{ color: theme.colors.textMuted, fontSize: 13, flex: 1 }}>
+                    Spots for your squad
+                  </Text>
+                  <TouchableOpacity onPress={() => setSquadSpots((n) => Math.max(1, n - 1))}>
+                    <Ionicons name="remove-circle-outline" size={26} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                  <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '700', minWidth: 20, textAlign: 'center' }}>
+                    {squadSpots}
+                  </Text>
+                  <TouchableOpacity onPress={() => setSquadSpots((n) => Math.min(selectedTeamOpen, n + 1))}>
+                    <Ionicons name="add-circle-outline" size={26} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                  {squadSpots > 1 && (
+                    <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>
+                      ({squadSpots - 1} reserved for squad)
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+          );
+        })()}
+
+        {/* Action row */}
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <TouchableOpacity
             onPress={handleShare}
@@ -359,8 +470,31 @@ export default function MatchDetailScreen() {
             />
           )}
 
-          {!isPast && !isParticipant && !isFull && match.status === 'open' && (
-            <Button label="Join Match" onPress={handleJoin} loading={joining} fullWidth />
+          {/* Join flow */}
+          {!isPast && !isParticipant && !isFull && match.status === 'open' && !match.is_private && (
+            joinPanelOpen ? (
+              <View style={{ flex: 1, flexDirection: 'row', gap: 8 }}>
+                <Button
+                  label="Cancel"
+                  onPress={() => { setJoinPanelOpen(false); setSelectedSide(null); setSquadSpots(1); }}
+                  variant="secondary"
+                  fullWidth
+                />
+                <Button
+                  label={`Join ${selectedSide === 'home' ? 'Home' : selectedSide === 'away' ? 'Away' : '...'}`}
+                  onPress={handleJoin}
+                  loading={joining}
+                  disabled={!selectedSide}
+                  fullWidth
+                />
+              </View>
+            ) : (
+              <Button label="Join Match" onPress={() => setJoinPanelOpen(true)} fullWidth />
+            )
+          )}
+
+          {!isPast && !isParticipant && match.is_private && !isFull && (
+            <Button label="Invite Only" onPress={() => {}} disabled fullWidth />
           )}
 
           {!isPast && isParticipant && !isCreator && (

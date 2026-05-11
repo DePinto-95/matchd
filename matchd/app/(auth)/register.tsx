@@ -56,8 +56,17 @@ export default function RegisterScreen() {
       Alert.alert('Registration failed', error.message);
       return;
     }
-    // Redirect to onboarding to pick account type
-    router.replace('/(auth)/onboarding');
+    // Check if already signed in (email confirmation disabled)
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      // fetchProfile will auto-create the player profile; AuthGuard navigates to tabs
+      return;
+    }
+    Alert.alert(
+      'Check your email',
+      'We sent you a confirmation link. Click it to activate your account, then sign in.',
+      [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
+    );
   };
 
   return (
@@ -148,15 +157,15 @@ export default function RegisterScreen() {
             />
           </View>
 
-          <Button
-            label="Create Account"
-            onPress={handleSubmit(onSubmit)}
-            loading={loading}
-            fullWidth
-            size="lg"
-            // @ts-ignore
-            style={{ marginTop: 28 }}
-          />
+          <View style={{ marginTop: 44 }}>
+            <Button
+              label="Create Account"
+              onPress={handleSubmit(onSubmit)}
+              loading={loading}
+              fullWidth
+              size="lg"
+            />
+          </View>
 
           <View
             style={{

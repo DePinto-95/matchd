@@ -41,7 +41,16 @@ export default function LoginScreen() {
     });
     setLoading(false);
     if (error) {
-      Alert.alert('Login failed', error.message);
+      const msg =
+        error.message.toLowerCase().includes('invalid login credentials') ||
+        error.message.toLowerCase().includes('invalid email or password')
+          ? 'Wrong email or password. Please try again.'
+          : error.message.toLowerCase().includes('email not confirmed')
+          ? 'Please confirm your email address before logging in. Check your inbox.'
+          : error.message.toLowerCase().includes('too many requests')
+          ? 'Too many login attempts. Please wait a few minutes and try again.'
+          : 'Login failed. Please check your connection and try again.';
+      Alert.alert('Login failed', msg);
     }
     // Auth state change in authStore will handle navigation
   };
