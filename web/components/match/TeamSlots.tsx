@@ -19,7 +19,26 @@ export function TeamSlots({ teams, participants, teamSize }: TeamSlotsProps) {
       {teams.map((team) => {
         const config = TEAM_COLORS[team.side] ?? TEAM_COLORS.home;
         const members = participants.filter((p) => p.team_id === team.id);
-        const emptySlots = teamSize - members.length;
+        // Participants from the other team who reserved spots here
+        const opponentHolders = participants.filter(
+          (p) => p.team_id !== team.id && (p.extra_spots_opponent ?? 0) > 0
+        );
+
+        // Build a flat list of slot rows
+        const slotRows: { key: string; participant: MatchParticipant; reserved: boolean }[] = [];
+        members.forEach((p) => {
+          slotRows.push({ key: p.id, participant: p, reserved: false });
+          for (let i = 0; i < (p.extra_spots ?? 0); i++) {
+            slotRows.push({ key: `${p.id}-extra-${i}`, participant: p, reserved: true });
+          }
+        });
+        opponentHolders.forEach((p) => {
+          for (let i = 0; i < (p.extra_spots_opponent ?? 0); i++) {
+            slotRows.push({ key: `${p.id}-opp-${i}`, participant: p, reserved: true });
+          }
+        });
+
+        const emptySlots = teamSize - slotRows.length;
 
         return (
           <div
@@ -32,24 +51,32 @@ export function TeamSlots({ teams, participants, teamSize }: TeamSlotsProps) {
               <span className="text-sm font-semibold" style={{ color: config.color }}>
                 {team.name ?? config.label}
               </span>
-              <span className="ml-auto text-xs text-text-muted">{members.length}/{teamSize}</span>
+              <span className="ml-auto text-xs text-text-muted">{slotRows.length}/{teamSize}</span>
             </div>
 
             <div className="p-2 flex flex-col gap-1.5">
-              {members.map((p) => (
+              {slotRows.map(({ key, participant: p, reserved }) => (
                 <Link
-                  key={p.id}
+                  key={key}
                   href={`/players/${p.player_id}`}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors ${reserved ? 'opacity-60' : ''}`}
                 >
-                  <Avatar src={p.profiles?.avatar_url} name={p.profiles?.username} size="xs" />
-                  <span className="text-xs text-text truncate">{p.profiles?.username ?? 'Player'}</span>
-                  {p.status === 'reserved' && (
-                    <span className="ml-auto text-[10px] text-text-muted">reserved</span>
+                  <Avatar
+                    src={reserved ? null : p.profiles?.avatar_url}
+                    name={p.profiles?.username}
+                    size="xs"
+                  />
+                  <span className="text-xs text-text truncate flex-1">
+                    {p.profiles?.username ?? 'Player'}
+                  </span>
+                  {reserved && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-warning/15 text-warning flex-shrink-0">
+                      held
+                    </span>
                   )}
                 </Link>
               ))}
-              {Array.from({ length: emptySlots }).map((_, i) => (
+              {Array.from({ length: Math.max(0, emptySlots) }).map((_, i) => (
                 <div key={i} className="flex items-center gap-2 px-2 py-1.5">
                   <div className="w-6 h-6 rounded-full border border-dashed border-border" />
                   <span className="text-xs text-text-muted">Open slot</span>

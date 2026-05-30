@@ -77,6 +77,8 @@ export interface MatchParticipant {
   team_id: string | null;
   joined_at: string;
   status: string;
+  extra_spots: number;
+  extra_spots_opponent?: number;
   profiles?: Profile;
 }
 

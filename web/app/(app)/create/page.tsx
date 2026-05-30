@@ -48,6 +48,33 @@ export default function CreateMatchPage() {
 
   const teamSizes = sport ? SPORTS[sport].teamSizes : [5];
 
+  const formatDateInput = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 8);
+    let result = '';
+    for (let i = 0; i < digits.length; i++) {
+      if (i === 2 || i === 4) result += '/';
+      result += digits[i];
+    }
+    return result;
+  };
+
+  const formatTimeInput = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  };
+
+  const parseDateTimeInputs = () => {
+    const dateParts = scheduledDate.split('/');
+    const timeParts = scheduledTime.split(':');
+    if (dateParts.length !== 3 || timeParts.length !== 2) return null;
+    const [day, month, year] = dateParts.map(Number);
+    const [hours, minutes] = timeParts.map(Number);
+    const d = new Date(year, month - 1, day, hours, minutes);
+    if (isNaN(d.getTime()) || d.getDate() !== day || d.getMonth() !== month - 1) return null;
+    return d;
+  };
+
   const handleNext = async () => {
     if (step === 0) {
       if (!sport) { toast.error('Please select a sport first'); return; }
@@ -59,6 +86,17 @@ export default function CreateMatchPage() {
     }
     if (step === 2) {
       if (!scheduledDate || !scheduledTime) { toast.error('Please enter a date and time'); return; }
+      if (scheduledDate.length !== 10) { toast.error('Enter date as DD/MM/YYYY'); return; }
+      if (scheduledTime.length !== 5) { toast.error('Enter time as HH:MM'); return; }
+      const timeParts = scheduledTime.split(':').map(Number);
+      if (timeParts[0] > 23 || timeParts[1] > 59) { toast.error('Invalid time'); return; }
+      const dt = parseDateTimeInputs();
+      if (!dt) { toast.error('Invalid date or time'); return; }
+      const now = new Date();
+      if (dt <= now) { toast.error('Match must be scheduled in the future'); return; }
+      const oneYearFromNow = new Date();
+      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+      if (dt > oneYearFromNow) { toast.error('Match cannot be more than 1 year in the future'); return; }
     }
     setStep((s) => Math.min(s + 1, 3));
   };
@@ -73,7 +111,7 @@ export default function CreateMatchPage() {
       return;
     }
 
-    const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
+    const scheduledAt = parseDateTimeInputs()!.toISOString();
 
     setLoading(true);
     const inviteCode = isPrivate ? generateInviteCode() : null;
@@ -256,16 +294,19 @@ export default function CreateMatchPage() {
         <div className="flex flex-col gap-5">
           <Input
             label="Date *"
-            type="date"
-            min={new Date().toISOString().split('T')[0]}
+            type="text"
+            placeholder="DD/MM/YYYY"
+            maxLength={10}
             value={scheduledDate}
-            onChange={(e) => setScheduledDate(e.target.value)}
+            onChange={(e) => setScheduledDate(formatDateInput(e.target.value))}
           />
           <Input
-            label="Time *"
-            type="time"
+            label="Time * (24h)"
+            type="text"
+            placeholder="HH:MM"
+            maxLength={5}
             value={scheduledTime}
-            onChange={(e) => setScheduledTime(e.target.value)}
+            onChange={(e) => setScheduledTime(formatTimeInput(e.target.value))}
           />
           <div>
             <label className="text-sm font-medium text-text-muted mb-2 block">Duration</label>

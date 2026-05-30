@@ -29,6 +29,10 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const [joinPanelOpen, setJoinPanelOpen] = useState(false);
   const [selectedSide, setSelectedSide] = useState<'home' | 'away' | null>(null);
   const [squadSpots, setSquadSpots] = useState(1);
+  const [squadPanelOpen, setSquadPanelOpen] = useState(false);
+  const [newTotalSpots, setNewTotalSpots] = useState(1);
+  const [newOpponentSpots, setNewOpponentSpots] = useState(0);
+  const [updatingSquad, setUpdatingSquad] = useState(false);
 
   const loadMatch = useCallback(async () => {
     const data = await fetchMatchById(id);
@@ -43,6 +47,55 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const isCreator = match?.creator_id === user?.id;
   const isFull = match?.status === 'full';
   const isPast = match ? isMatchPast(match.scheduled_at, match.duration_minutes) : false;
+
+  const myRow = match?.match_participants?.find((p) => p.player_id === user?.id);
+  const myCurrentExtraSpots = myRow?.extra_spots ?? 0;
+  const myCurrentExtraSpotOpponent = myRow?.extra_spots_opponent ?? 0;
+  const opponentTeamId = match?.match_teams?.find((t) => t.id !== myRow?.team_id)?.id;
+  const myTeamMembers = match?.match_participants?.filter((p) => p.team_id === myRow?.team_id) ?? [];
+  const opponentMembers = match?.match_participants?.filter((p) => p.team_id === opponentTeamId) ?? [];
+  const myTeamOccupied = myTeamMembers.reduce((sum, p) => sum + 1 + (p.extra_spots ?? 0), 0)
+    + opponentMembers.reduce((sum, p) => sum + (p.extra_spots_opponent ?? 0), 0);
+  const opponentOccupied = opponentMembers.reduce((sum, p) => sum + 1 + (p.extra_spots ?? 0), 0)
+    + myTeamMembers.reduce((sum, p) => sum + (p.extra_spots_opponent ?? 0), 0);
+  const myTeamOpenSlots = (match?.team_size ?? 0) - myTeamOccupied;
+  const opponentOpenSlots = (match?.team_size ?? 0) - opponentOccupied;
+
+  const handleUpdateSquadSpots = async () => {
+    if (!match || !user || !myRow) return;
+    setUpdatingSquad(true);
+    const newExtraSpots = newTotalSpots - 1;
+    const myDelta = newExtraSpots - myCurrentExtraSpots;
+    const oppDelta = newOpponentSpots - myCurrentExtraSpotOpponent;
+    if (myDelta > myTeamOpenSlots) {
+      toast.error(`Only ${myTeamOpenSlots} more spot(s) available on your team.`);
+      setUpdatingSquad(false);
+      return;
+    }
+    if (oppDelta > opponentOpenSlots) {
+      toast.error(`Only ${opponentOpenSlots} more spot(s) available on the opponent team.`);
+      setUpdatingSquad(false);
+      return;
+    }
+    const { error } = await supabase
+      .from('match_participants')
+      .update({ extra_spots: newExtraSpots, extra_spots_opponent: newOpponentSpots })
+      .eq('match_id', match.id)
+      .eq('player_id', user.id);
+    if (error) { toast.error(error.message); setUpdatingSquad(false); return; }
+    const totalDelta = myDelta + oppDelta;
+    if (totalDelta !== 0) {
+      await supabase.rpc('adjust_match_player_count', { p_match_id: match.id, p_delta: totalDelta });
+    }
+    const parts = [
+      newExtraSpots > 0 ? `${newExtraSpots} on your team` : '',
+      newOpponentSpots > 0 ? `${newOpponentSpots} on opponent team` : '',
+    ].filter(Boolean);
+    toast.success(parts.length ? `Reserved: ${parts.join(', ')}` : 'Squad spots updated.');
+    setSquadPanelOpen(false);
+    setUpdatingSquad(false);
+    loadMatch();
+  };
 
   const handleJoin = async () => {
     if (!match || !user || !selectedSide) return;
@@ -71,24 +124,26 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       return;
     }
 
+    const extraSpots = squadSpots - 1;
+
     const { error } = await supabase.from('match_participants').insert({
       match_id: match.id,
       player_id: user.id,
       team_id: targetTeam?.id ?? null,
       status: 'confirmed',
+      extra_spots: extraSpots,
     });
 
     if (error) { toast.error(error.message); setJoining(false); return; }
 
-    if (squadSpots > 1) {
-      const reserved = Array.from({ length: squadSpots - 1 }).map(() => ({
-        match_id: match.id,
-        player_id: user.id,
-        team_id: targetTeam?.id ?? null,
-        status: 'reserved',
-      }));
-      await supabase.from('match_participants').insert(reserved);
-      toast.success(`Joined and reserved ${squadSpots - 1} extra spot(s) for your squad!`);
+    // The DB trigger already added 1 to current_players for the INSERT.
+    // Call the RPC to add the extra reserved spots to the count.
+    if (extraSpots > 0) {
+      await supabase.rpc('adjust_match_player_count', {
+        p_match_id: match.id,
+        p_delta: extraSpots,
+      });
+      toast.success(`Joined and reserved ${extraSpots} extra spot(s) for your squad!`);
     } else {
       toast.success('You joined the match!');
     }
@@ -96,18 +151,33 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
     setJoinPanelOpen(false);
     setSelectedSide(null);
     setSquadSpots(1);
+    setJoining(false);
     loadMatch();
   };
 
   const handleLeave = async () => {
     if (!match || !user) return;
     if (!confirm('Are you sure you want to leave this match?')) return;
+
+    // Find the participant row to know how many extra spots to release
+    const participantRow = match.match_participants?.find((p) => p.player_id === user.id);
+    const extraSpots = (participantRow as { extra_spots?: number })?.extra_spots ?? 0;
+
     await supabase
       .from('match_participants')
       .delete()
       .eq('match_id', match.id)
       .eq('player_id', user.id);
-    toast.success('You left the match');
+
+    // The trigger subtracts 1 for the DELETE; subtract extra spots too
+    if (extraSpots > 0) {
+      await supabase.rpc('adjust_match_player_count', {
+        p_match_id: match.id,
+        p_delta: -extraSpots,
+      });
+    }
+
+    toast.success('You left the match — all your reserved spots were released');
     loadMatch();
   };
 
@@ -284,14 +354,61 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
             })}
           </div>
 
-          {selectedSide && selectedTeamOpen > 1 && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-text-muted flex-1">Spots for your squad</span>
-              <button onClick={() => setSquadSpots((n) => Math.max(1, n - 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">−</button>
-              <span className="text-lg font-bold text-text w-6 text-center">{squadSpots}</span>
-              <button onClick={() => setSquadSpots((n) => Math.min(selectedTeamOpen, n + 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">+</button>
+          {selectedSide && selectedTeamOpen > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <span className="text-sm text-text">Total spots to reserve</span>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    1 for you{squadSpots > 1 ? ` + ${squadSpots - 1} held for your squad` : ''} · max {selectedTeamOpen}
+                  </p>
+                </div>
+                <button onClick={() => setSquadSpots((n) => Math.max(1, n - 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">−</button>
+                <span className="text-lg font-bold text-text w-6 text-center">{squadSpots}</span>
+                <button onClick={() => setSquadSpots((n) => Math.min(selectedTeamOpen, n + 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">+</button>
+              </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Squad spots panel (for participants) */}
+      {squadPanelOpen && isParticipant && !isPast && (
+        <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-5">
+          <h3 className="font-semibold text-text">Reserve squad spots</h3>
+
+          {/* Own team */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <span className="text-sm font-medium text-text">Your team</span>
+              <p className="text-xs text-text-muted mt-0.5">
+                {newTotalSpots === 1 ? 'Just you' : `You + ${newTotalSpots - 1} held`}
+                {` · max ${myCurrentExtraSpots + myTeamOpenSlots + 1}`}
+              </p>
+            </div>
+            <button onClick={() => setNewTotalSpots((n) => Math.max(1, n - 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">−</button>
+            <span className="text-lg font-bold text-text w-6 text-center">{newTotalSpots}</span>
+            <button onClick={() => setNewTotalSpots((n) => Math.min(myCurrentExtraSpots + myTeamOpenSlots + 1, n + 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">+</button>
+          </div>
+
+          {/* Opponent team */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <span className="text-sm font-medium text-text">Opponent team</span>
+              <p className="text-xs text-text-muted mt-0.5">
+                {newOpponentSpots === 0 ? 'No reservation' : `${newOpponentSpots} held`}
+                {` · max ${myCurrentExtraSpotOpponent + opponentOpenSlots}`}
+              </p>
+            </div>
+            <button onClick={() => setNewOpponentSpots((n) => Math.max(0, n - 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">−</button>
+            <span className="text-lg font-bold text-text w-6 text-center">{newOpponentSpots}</span>
+            <button onClick={() => setNewOpponentSpots((n) => Math.min(myCurrentExtraSpotOpponent + opponentOpenSlots, n + 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">+</button>
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="secondary" className="flex-1" onClick={() => setSquadPanelOpen(false)}>Cancel</Button>
+            <Button className="flex-1" loading={updatingSquad} onClick={handleUpdateSquadSpots}>Confirm</Button>
+          </div>
         </div>
       )}
 
@@ -337,15 +454,33 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
         )}
 
         {!isPast && isParticipant && !isCreator && (
-          <Button variant="danger" size="lg" className="flex-1" onClick={handleLeave}>
-            Leave Match
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => { setNewTotalSpots(myCurrentExtraSpots + 1); setNewOpponentSpots(myCurrentExtraSpotOpponent); setSquadPanelOpen((o) => !o); }}
+            >
+              + Squad
+            </Button>
+            <Button variant="danger" size="lg" className="flex-1" onClick={handleLeave}>
+              Leave Match
+            </Button>
+          </>
         )}
 
         {isCreator && match.status !== 'cancelled' && (
-          <Button variant="danger" size="lg" className="flex-1" onClick={handleCancelMatch}>
-            Cancel Match
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => { setNewTotalSpots(myCurrentExtraSpots + 1); setNewOpponentSpots(myCurrentExtraSpotOpponent); setSquadPanelOpen((o) => !o); }}
+            >
+              + Squad
+            </Button>
+            <Button variant="danger" size="lg" className="flex-1" onClick={handleCancelMatch}>
+              Cancel Match
+            </Button>
+          </>
         )}
 
         {isFull && !isParticipant && (
