@@ -4,10 +4,11 @@ import { useEffect, useState, useCallback, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { MapPin, Clock, Users, Share2, ChevronLeft, Star, Lock } from 'lucide-react';
+import { MapPin, Clock, Users, Share2, ChevronLeft, Star, Lock, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useMatchStore } from '@/stores/matchStore';
+import { useFriendStore } from '@/stores/friendStore';
 import { useMatchRealtime } from '@/hooks/useRealtime';
 import { SPORTS } from '@/constants/sports';
 import { formatMatchDate, formatPrice, isMatchPast } from '@/lib/helpers';
@@ -20,8 +21,9 @@ import { Button } from '@/components/ui/Button';
 export default function MatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
   const { fetchMatchById } = useMatchStore();
+  const { friends, fetchFriends, sendMatchInvites } = useFriendStore();
 
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +35,9 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const [newTotalSpots, setNewTotalSpots] = useState(1);
   const [newOpponentSpots, setNewOpponentSpots] = useState(0);
   const [updatingSquad, setUpdatingSquad] = useState(false);
+  const [sharePanelOpen, setSharePanelOpen] = useState(false);
+  const [selectedFriendIds, setSelectedFriendIds] = useState<Set<string>>(new Set());
+  const [sendingInvites, setSendingInvites] = useState(false);
 
   const loadMatch = useCallback(async () => {
     const data = await fetchMatchById(id);
@@ -40,7 +45,10 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
     setLoading(false);
   }, [id, fetchMatchById]);
 
-  useEffect(() => { loadMatch(); }, [loadMatch]);
+  useEffect(() => {
+    loadMatch();
+    if (user?.id) fetchFriends(user.id);
+  }, [loadMatch, user?.id, fetchFriends]);
   useMatchRealtime(id, loadMatch);
 
   const isParticipant = match?.match_participants?.some((p) => p.player_id === user?.id);
@@ -192,7 +200,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const handleShare = () => {
     if (!match) return;
     const text = match.is_private && match.invite_code
-      ? `Join my ${SPORTS[match.sport].label} match on SportsMeet! Code: ${match.invite_code}`
+      ? `Join my ${SPORTS[match.sport].label} match on MatchD! Code: ${match.invite_code}`
       : `Check out this match: ${match.title}`;
     if (navigator.share) {
       navigator.share({ title: match.title, text });
@@ -200,6 +208,27 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       navigator.clipboard.writeText(window.location.href);
       toast.success('Link copied to clipboard!');
     }
+  };
+
+  const handleSendToFriends = async () => {
+    if (!match || !profile || selectedFriendIds.size === 0) return;
+    setSendingInvites(true);
+    await sendMatchInvites(profile.username, [...selectedFriendIds], {
+      id: match.id,
+      sport: match.sport,
+      title: match.title,
+    });
+    setSendingInvites(false);
+    setSharePanelOpen(false);
+    setSelectedFriendIds(new Set());
+  };
+
+  const toggleFriend = (friendId: string) => {
+    setSelectedFriendIds(prev => {
+      const next = new Set(prev);
+      next.has(friendId) ? next.delete(friendId) : next.add(friendId);
+      return next;
+    });
   };
 
   if (loading) {
@@ -412,6 +441,48 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
+      {/* Send to friends panel */}
+      {sharePanelOpen && (
+        <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-text">Send to Friends</h3>
+            <button onClick={() => { setSharePanelOpen(false); setSelectedFriendIds(new Set()); }} className="text-text-muted hover:text-text">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {friends.length === 0 ? (
+            <p className="text-text-muted text-sm text-center py-4">Add some friends first to share matches with them.</p>
+          ) : (
+            <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+              {friends.map(f => {
+                const selected = selectedFriendIds.has(f.profiles!.id);
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => toggleFriend(f.profiles!.id)}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-colors text-left
+                      ${selected ? 'bg-brand/10' : 'hover:bg-surface-alt'}`}
+                  >
+                    <input type="checkbox" checked={selected} readOnly className="accent-brand flex-shrink-0" />
+                    <Avatar src={f.profiles!.avatar_url} name={f.profiles!.full_name ?? f.profiles!.username} size="sm" />
+                    <span className="text-sm text-text">{f.profiles!.full_name ?? f.profiles!.username}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {friends.length > 0 && (
+            <Button
+              loading={sendingInvites}
+              disabled={selectedFriendIds.size === 0}
+              onClick={handleSendToFriends}
+            >
+              Send{selectedFriendIds.size > 0 ? ` (${selectedFriendIds.size})` : ''}
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Action bar */}
       <div className="flex gap-3">
         <button
@@ -419,6 +490,13 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
           className="w-12 h-12 rounded-xl border border-border flex items-center justify-center text-text-muted hover:text-text hover:bg-surface-alt transition-colors flex-shrink-0"
         >
           <Share2 className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setSharePanelOpen(o => !o)}
+          className="w-12 h-12 rounded-xl border border-border flex items-center justify-center text-text-muted hover:text-text hover:bg-surface-alt transition-colors flex-shrink-0"
+          title="Send to friends"
+        >
+          <Users className="w-5 h-5" />
         </button>
 
         {isPast && isParticipant && (

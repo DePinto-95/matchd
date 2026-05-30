@@ -2,15 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { Home, Search, Plus, Bell, User, LogOut, Menu, X, Zap } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Home, Search, Plus, Bell, User, LogOut, Menu, X, Zap, Users } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';
+import { useFriendStore } from '@/stores/friendStore';
 import { Avatar } from '@/components/ui/Avatar';
 
 const navLinks = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/discover', label: 'Discover', icon: Search },
+  { href: '/friends', label: 'Friends', icon: Users },
   { href: '/create', label: 'Create', icon: Plus },
   { href: '/notifications', label: 'Notifications', icon: Bell },
 ];
@@ -23,6 +25,11 @@ export function Navbar() {
 
   const { profile, signOut } = useAuthStore();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const { pendingInCount, fetchFriends } = useFriendStore();
+
+  useEffect(() => {
+    if (profile?.id) fetchFriends(profile.id);
+  }, [profile?.id, fetchFriends]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -38,7 +45,7 @@ export function Navbar() {
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center">
               <Zap className="w-4 h-4 text-white" />
             </div>
-            <span className="font-heading font-bold text-lg text-text hidden sm:block">SportsMeet</span>
+            <span className="font-heading font-bold text-lg text-text hidden sm:block">MatchD</span>
           </Link>
 
           {/* Desktop nav */}
@@ -57,6 +64,11 @@ export function Navbar() {
                   {label === 'Notifications' && unreadCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-brand text-white text-[10px] flex items-center justify-center">
                       {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                  {label === 'Friends' && pendingInCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-brand text-white text-[10px] flex items-center justify-center">
+                      {pendingInCount > 9 ? '9+' : pendingInCount}
                     </span>
                   )}
                 </Link>
@@ -146,6 +158,11 @@ export function Navbar() {
                   {label === 'Notifications' && unreadCount > 0 && (
                     <span className="ml-auto w-5 h-5 rounded-full bg-brand text-white text-xs flex items-center justify-center">
                       {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                  {label === 'Friends' && pendingInCount > 0 && (
+                    <span className="ml-auto w-5 h-5 rounded-full bg-brand text-white text-xs flex items-center justify-center">
+                      {pendingInCount > 9 ? '9+' : pendingInCount}
                     </span>
                   )}
                 </Link>

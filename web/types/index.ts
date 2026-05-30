@@ -116,6 +116,14 @@ export interface SquadMember {
   profiles?: Profile;
 }
 
+export type ReportReason = 'spam_scam' | 'inappropriate_behavior' | 'fake_profile' | 'other';
+
+export type FriendRelation =
+  | { kind: 'none' }
+  | { kind: 'pending_sent';     friendshipId: string }
+  | { kind: 'pending_received'; friendshipId: string }
+  | { kind: 'friends';          friendshipId: string };
+
 export interface Friendship {
   id: string;
   requester_id: string;
@@ -123,6 +131,15 @@ export interface Friendship {
   status: 'pending' | 'accepted' | 'blocked';
   created_at: string;
   profiles?: Profile;
+}
+
+export interface UserReport {
+  id: string;
+  reporter_id: string;
+  reported_id: string;
+  reason: ReportReason;
+  details: string | null;
+  created_at: string;
 }
 
 export interface MatchRating {
