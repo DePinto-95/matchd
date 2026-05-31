@@ -8,7 +8,6 @@ import type { SportType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';
-import { useNotificationRealtime } from '@/hooks/useRealtime';
 import { Button } from '@/components/ui/Button';
 
 export default function NotificationsPage() {
@@ -19,10 +18,6 @@ export default function NotificationsPage() {
   useEffect(() => {
     if (user?.id) fetchNotifications(user.id);
   }, [user?.id, fetchNotifications]);
-
-  useNotificationRealtime(user?.id ?? '', () => {
-    if (user?.id) fetchNotifications(user.id);
-  });
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
