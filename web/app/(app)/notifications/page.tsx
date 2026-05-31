@@ -68,8 +68,8 @@ export default function NotificationsPage() {
             return (
               <button
                 key={n.id}
-                onClick={() => {
-                  if (!n.read) markAsRead(n.id);
+                onClick={async () => {
+                  if (!n.read) await markAsRead(n.id);
                   if (isMatchInvite) {
                     const matchId = (n.data as { match_id?: string })?.match_id;
                     if (matchId) router.push(`/matches/${matchId}`);

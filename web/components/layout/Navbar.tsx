@@ -7,6 +7,7 @@ import { Home, Search, Plus, Bell, User, LogOut, Menu, X, Zap, Users } from 'luc
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useFriendStore } from '@/stores/friendStore';
+import { useNotificationRealtime } from '@/hooks/useRealtime';
 import { Avatar } from '@/components/ui/Avatar';
 
 const navLinks = [
@@ -24,12 +25,19 @@ export function Navbar() {
   const [profileOpen, setProfileOpen] = useState(false);
 
   const { profile, signOut } = useAuthStore();
-  const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const { unreadCount, fetchNotifications } = useNotificationStore();
   const { pendingInCount, fetchFriends } = useFriendStore();
 
   useEffect(() => {
-    if (profile?.id) fetchFriends(profile.id);
-  }, [profile?.id, fetchFriends]);
+    if (profile?.id) {
+      fetchNotifications(profile.id);
+      fetchFriends(profile.id);
+    }
+  }, [profile?.id, fetchNotifications, fetchFriends]);
+
+  useNotificationRealtime(profile?.id ?? '', () => {
+    if (profile?.id) fetchNotifications(profile.id);
+  });
 
   const handleSignOut = async () => {
     await signOut();
