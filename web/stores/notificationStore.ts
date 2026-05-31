@@ -8,6 +8,7 @@ interface NotificationState {
   loading: boolean;
   fetchNotifications: (userId: string) => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
   markAllAsRead: (userId: string) => Promise<void>;
 }
 
@@ -41,6 +42,18 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       ),
       unreadCount: Math.max(0, state.unreadCount - 1),
     }));
+  },
+
+  deleteNotification: async (id: string) => {
+    const { error } = await supabase.from('notifications').delete().eq('id', id);
+    if (error) return;
+    set((state) => {
+      const n = state.notifications.find((n) => n.id === id);
+      return {
+        notifications: state.notifications.filter((n) => n.id !== id),
+        unreadCount: n && !n.read ? Math.max(0, state.unreadCount - 1) : state.unreadCount,
+      };
+    });
   },
 
   markAllAsRead: async (userId: string) => {

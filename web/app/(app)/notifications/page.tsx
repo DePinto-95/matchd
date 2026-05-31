@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, CheckCheck, Users, Share2 } from 'lucide-react';
+import { Bell, CheckCheck, Users, Share2, X } from 'lucide-react';
 import { SPORTS } from '@/constants/sports';
 import type { SportType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/Button';
 export default function NotificationsPage() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { notifications, unreadCount, loading, fetchNotifications, markAsRead, markAllAsRead } = useNotificationStore();
+  const { notifications, unreadCount, loading, fetchNotifications, markAsRead, deleteNotification, markAllAsRead } = useNotificationStore();
 
   useEffect(() => {
     if (user?.id) fetchNotifications(user.id);
@@ -61,38 +61,46 @@ export default function NotificationsPage() {
             const matchEmoji = sport ? (SPORTS[sport]?.emoji ?? '🏅') : null;
 
             return (
-              <button
-                key={n.id}
-                onClick={async () => {
-                  if (!n.read) await markAsRead(n.id);
-                  if (isMatchInvite) {
-                    const matchId = (n.data as { match_id?: string })?.match_id;
-                    if (matchId) router.push(`/matches/${matchId}`);
-                  } else if (isFriendType) {
-                    router.push('/friends');
-                  }
-                }}
-                className={`w-full text-left p-4 rounded-xl border transition-all
-                  ${n.read
-                    ? 'bg-surface border-border'
-                    : 'bg-brand/5 border-brand/30 hover:bg-brand/10'
-                  }`}
-              >
-                <div className="flex items-start gap-3">
-                  {!n.read && <div className="w-2 h-2 rounded-full bg-brand mt-1.5 flex-shrink-0" />}
-                  <div className={`flex items-start gap-2 flex-1 ${n.read ? 'pl-5' : ''}`}>
-                    {isFriendType && <Users className="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />}
-                    {isMatchInvite && <span className="text-base leading-none flex-shrink-0">{matchEmoji ?? <Share2 className="w-4 h-4" />}</span>}
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-text">{n.title}</p>
-                      {n.body && <p className="text-xs text-text-muted mt-0.5">{n.body}</p>}
-                      <p className="text-xs text-text-muted mt-1">
-                        {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                      </p>
+              <div key={n.id} className="relative group">
+                <button
+                  onClick={async () => {
+                    if (!n.read) await markAsRead(n.id);
+                    if (isMatchInvite) {
+                      const matchId = (n.data as { match_id?: string })?.match_id;
+                      if (matchId) router.push(`/matches/${matchId}`);
+                    } else if (isFriendType) {
+                      router.push('/friends');
+                    }
+                  }}
+                  className={`w-full text-left p-4 rounded-xl border transition-all
+                    ${n.read
+                      ? 'bg-surface border-border'
+                      : 'bg-brand/5 border-brand/30 hover:bg-brand/10'
+                    }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {!n.read && <div className="w-2 h-2 rounded-full bg-brand mt-1.5 flex-shrink-0" />}
+                    <div className={`flex items-start gap-2 flex-1 ${n.read ? 'pl-5' : ''}`}>
+                      {isFriendType && <Users className="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />}
+                      {isMatchInvite && <span className="text-base leading-none flex-shrink-0">{matchEmoji ?? <Share2 className="w-4 h-4" />}</span>}
+                      <div className="flex-1 pr-6">
+                        <p className="text-sm font-medium text-text">{n.title}</p>
+                        {n.body && <p className="text-xs text-text-muted mt-0.5">{n.body}</p>}
+                        <p className="text-xs text-text-muted mt-1">
+                          {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                <button
+                  onClick={() => deleteNotification(n.id)}
+                  className="absolute top-2 right-2 p-1 rounded-md text-text-muted opacity-0 group-hover:opacity-100 hover:text-text hover:bg-surface-alt transition-all"
+                  aria-label="Dismiss notification"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             );
           })}
         </div>
