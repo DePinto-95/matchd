@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**SportsMeet** — a platform where players create and join sports matches with strangers or friends. Supports football, mini football (5v5/8v8), padel, tennis, basketball, volleyball. Two account types: `player` and `venue` (sports centers).
+**MatchD** — a platform where players create and join sports matches with strangers or friends. Supports football, mini football (5v5/8v8), padel, tennis, basketball, volleyball. Two account types: `player` and `venue` (sports centers).
 
 ## Folder Structure
 
@@ -34,10 +34,12 @@ npm run build
 - `app/(app)/create/page.tsx` — multi-step match creation wizard
 - `app/(app)/matches/[id]/page.tsx` — match detail, team slots, join/leave flow
 - `app/(app)/matches/[id]/rate/page.tsx` — post-match player rating
-- `app/(app)/profile/page.tsx` — player profile
-- `app/(app)/players/[id]/page.tsx` — public player profile
+- `app/(app)/profile/page.tsx` — own profile (avatar upload, edit modal, levels, ratings, recent matches)
+- `app/(app)/players/[id]/page.tsx` — public player profile (friend actions, report)
 - `app/(app)/venues/[id]/page.tsx` — public venue page
-- `app/(app)/notifications/page.tsx` — notification list
+- `app/(app)/notifications/page.tsx` — notification list (click navigates to match or /friends)
+- `app/(app)/friends/page.tsx` — friends list, pending requests, find people search
+- `app/(app)/friends/invite/page.tsx` — search existing players + shareable invite link
 - `app/auth/login/page.tsx` — login
 - `app/auth/register/page.tsx` — register
 - `app/auth/forgot-password/page.tsx` — request password reset email
@@ -52,21 +54,33 @@ npm run build
 - All DB operations go through the Supabase JS client — no separate API layer.
 
 Key tables:
-- `profiles` — extends `auth.users`; `account_type: 'player' | 'venue'`
+- `profiles` — extends `auth.users`; `account_type: 'player' | 'venue'`; editable fields: `full_name`, `username`, `bio`, `location`, `avatar_url`
 - `matches` — status lifecycle: `open → full → in_progress → completed/cancelled`
 - `match_participants` — DB trigger auto-increments `matches.current_players` and flips status to `full` when at capacity. Key columns: `extra_spots` (reserved spots on own team), `extra_spots_opponent` (reserved spots on opponent team)
 - `match_teams` — `home`/`away` rows per match; participants reference a team
 - `player_ratings` — one row per `(player_id, sport)`; DB trigger recalculates weighted rolling average on each `match_ratings` insert (default 5.0/10)
 - `venues` — owned by `venue` accounts; matches link via `venue_id`
+- `friendships` — `requester_id`, `addressee_id`, `status: 'pending' | 'accepted' | 'blocked'`. Unique constraint on (requester_id, addressee_id). RLS: both parties can SELECT/DELETE; only addressee can UPDATE (accept); only requester can INSERT.
+- `notifications` — `user_id`, `type`, `title`, `body`, `data` (jsonb), `read`. Types in use: `friend_request`, `friend_accepted`, `match_invite`. RLS: any authenticated user can INSERT (needed to send notifications to others); users can only SELECT/UPDATE/DELETE their own.
+- `user_reports` — `reporter_id`, `reported_id`, `reason`, `details`. Unique constraint prevents duplicate reports. No SELECT policy (admin only).
 
 Custom DB functions:
 - `adjust_match_player_count(p_match_id, p_delta)` — RPC to manually adjust `current_players` beyond what the INSERT/DELETE trigger handles (used for squad spot reservations)
 
+### Storage — Supabase
+- Bucket: `avatars` (public). Path pattern: `{userId}/avatar.{ext}`. Policies: authenticated users can INSERT/UPDATE/DELETE their own folder (matched via `storage.foldername(name)[1] = auth.uid()`); public SELECT for all.
+
 ### State — Zustand
-Stores in `stores/`: `authStore.ts`, `matchStore.ts`, `notificationStore.ts`.
+Stores in `stores/`:
+- `authStore.ts` — session, user, profile; `fetchProfile` bootstraps on auth change
+- `matchStore.ts` — match list, filters, fetch helpers
+- `notificationStore.ts` — notifications list, `unreadCount`, `fetchNotifications`, `markAsRead`, `deleteNotification`, `markAllAsRead`
+- `friendStore.ts` — `friends`, `pendingIn`, `pendingOut`, `pendingInCount`; actions: `sendRequest`, `acceptRequest`, `declineRequest`, `cancelRequest`, `removeFriend`, `sendMatchInvites`, `reportUser`; `getRelation(userId)` returns a `FriendRelation` discriminated union
 
 ### Realtime
-Supabase Realtime subscriptions in `hooks/useRealtime.ts`. Subscribe to `match_participants` changes to update team slots live.
+Supabase Realtime subscriptions in `hooks/useRealtime.ts`:
+- `useMatchRealtime(matchId, onUpdate)` — subscribes to `match_participants` and `matches` changes
+- `useNotificationRealtime(userId, onNew)` — subscribes to `notifications` INSERT events. **Only call this once per session** — it lives in the Navbar. Do NOT also call it from individual pages or Supabase will throw a duplicate channel error.
 
 ### Forms
 React Hook Form + Zod for all forms.
@@ -100,6 +114,16 @@ All sport metadata lives in `constants/sports.ts`. Reference `SPORTS[sport]` eve
 **Password reset flow**: `resetPasswordForEmail` → email link → `/auth/callback` (exchanges PKCE code, sets session cookies on redirect response) → `/auth/reset-password` (calls `updateUser`, then `signOut`, redirects to login).
 
 **Home feed filtering**: Default shows upcoming matches (`status IN ('open','full')` and `scheduled_at >= now`). A History toggle switches to past matches (`scheduled_at < now`, descending order).
+
+**Friend system**: Friendships are directional (requester → addressee) then mutual on accept. `useFriendStore().getRelation(userId)` returns `{ kind: 'none' | 'pending_sent' | 'pending_received' | 'friends', friendshipId }` — use this to drive friend action buttons on any profile. Sending a request / accepting also inserts a `notifications` row for the other user.
+
+**Match sharing with friends**: Call `useFriendStore().sendMatchInvites(senderUsername, friendIds[], match)` — bulk-inserts `match_invite` notifications. The notifications page navigates to the match on click.
+
+**In-app notifications**: INSERT into `notifications` table with `type`, `title`, `body`, `data` (jsonb). The Navbar owns the realtime subscription and badge count. Pages call `fetchNotifications` on mount only — they do not subscribe to realtime themselves.
+
+**Avatar upload**: `supabase.storage.from('avatars').upload(`${userId}/avatar.${ext}`, file, { upsert: true })` → get public URL via `getPublicUrl` → update `profiles.avatar_url`. To remove: list files in `${userId}/` folder, `storage.remove([...paths])`, then set `avatar_url = null` in profiles.
+
+**Levels section**: The `player_ratings` table drives which sports appear in the Levels card on the profile page. The level value itself is currently a `—` placeholder — update when the level/rank system is implemented.
 
 **Payment**: Schema has `price_per_player` and `currency` on `matches` — present but payment UI is not implemented. Do not add Stripe integration unless explicitly asked.
 

@@ -56,7 +56,7 @@ export default function RegisterPage() {
       });
     }
 
-    toast.success('Account created! Welcome to SportsMeet.');
+    toast.success('Account created! Welcome to MatchD.');
     router.push('/');
     router.refresh();
   };
@@ -68,12 +68,12 @@ export default function RegisterPage() {
           <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center">
             <Zap className="w-5 h-5 text-white" />
           </div>
-          <span className="font-heading font-bold text-2xl text-text">SportsMeet</span>
+          <span className="font-heading font-bold text-2xl text-text">MatchD</span>
         </div>
 
         <div className="bg-surface border border-border rounded-2xl p-8">
           <h1 className="font-heading font-bold text-2xl text-text mb-2">Create account</h1>
-          <p className="text-text-muted text-sm mb-6">Join SportsMeet to find and create matches</p>
+          <p className="text-text-muted text-sm mb-6">Join MatchD to find and create matches</p>
 
           {/* Account type selector */}
           <div className="grid grid-cols-2 gap-3 mb-6">

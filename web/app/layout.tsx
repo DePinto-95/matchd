@@ -15,7 +15,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: 'SportsMeet — Find your game',
+  title: 'MatchD — Find your game',
   description: 'Create and join sports matches near you',
 };
 
