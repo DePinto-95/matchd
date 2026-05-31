@@ -54,6 +54,19 @@ export default function ProfilePage() {
     }
   }, [profile]);
 
+  const handleRemoveAvatar = async () => {
+    if (!user) return;
+    setUploading(true);
+    const { data: files } = await supabase.storage.from('avatars').list(user.id);
+    if (files?.length) {
+      await supabase.storage.from('avatars').remove(files.map(f => `${user.id}/${f.name}`));
+    }
+    await supabase.from('profiles').update({ avatar_url: null }).eq('id', user.id);
+    await Promise.all([fetchProfile(user.id), fetchDetailedProfile(user.id)]);
+    toast.success('Photo removed');
+    setUploading(false);
+  };
+
   const handleAvatarUpload = async (file: File) => {
     if (!user) return;
     if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
@@ -140,6 +153,14 @@ export default function ProfilePage() {
                 >
                   Edit Profile
                 </button>
+                {profile.avatar_url && (
+                  <button
+                    onClick={() => { handleRemoveAvatar(); setMenuOpen(false); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-error hover:bg-surface-alt transition-colors"
+                  >
+                    Remove Photo
+                  </button>
+                )}
               </div>
             </>
           )}
