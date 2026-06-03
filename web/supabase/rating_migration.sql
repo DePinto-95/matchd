@@ -138,7 +138,7 @@ BEGIN
   -- Combined rating
   IF v_elo_applied THEN
     SELECT team_size INTO v_team_size FROM matches WHERE id = NEW.match_id;
-    v_w_elo   := 0.7 / (1.0 + 0.5 * LN(GREATEST(v_team_size::NUMERIC, 1.0)));
+    v_w_elo   := 0.8 / (1.0 + 0.5 * LN(GREATEST(v_team_size::NUMERIC, 1.0)));
     v_combined := v_w_elo * v_elo_old + (1.0 - v_w_elo) * v_peer_new;
   ELSE
     v_combined := v_peer_new;
@@ -210,7 +210,7 @@ BEGIN
   v_K := 0.8 / SQRT(GREATEST(v_team_size::NUMERIC, 1.0));
 
   -- Combined weight
-  v_w_elo  := 0.7 / (1.0 + 0.5 * LN(GREATEST(v_team_size::NUMERIC, 1.0)));
+  v_w_elo  := 0.8 / (1.0 + 0.5 * LN(GREATEST(v_team_size::NUMERIC, 1.0)));
   v_w_peer := 1.0 - v_w_elo;
 
   -- Update each confirmed participant
