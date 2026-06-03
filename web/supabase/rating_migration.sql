@@ -168,23 +168,26 @@ CREATE TRIGGER update_player_rating
 CREATE OR REPLACE FUNCTION update_elo_rating()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
-  v_match_id       UUID;
-  v_sport          TEXT;
-  v_team_size      INT;
-  v_final_winner   TEXT;
-  v_home_team_id   UUID;
-  v_away_team_id   UUID;
-  v_w_elo          NUMERIC;
-  v_w_peer         NUMERIC;
-  v_K              NUMERIC;
-  rec              RECORD;
-  v_elo_old        NUMERIC;
-  v_peer_old       NUMERIC;
-  v_opp_avg_elo    NUMERIC;
-  v_S              NUMERIC;
-  v_E              NUMERIC;
-  v_elo_new        NUMERIC;
-  v_combined       NUMERIC;
+  v_match_id        UUID;
+  v_sport           TEXT;
+  v_team_size       INT;
+  v_final_winner    TEXT;
+  v_home_team_id    UUID;
+  v_away_team_id    UUID;
+  v_w_elo           NUMERIC;
+  v_w_peer          NUMERIC;
+  v_K               NUMERIC;
+  v_home_avg_elo    NUMERIC;  -- avg elo of home team (used for E calculation)
+  v_away_avg_elo    NUMERIC;  -- avg elo of away team (used for E calculation)
+  v_E_home          NUMERIC;  -- expected win prob for home team
+  v_E_away          NUMERIC;  -- expected win prob for away team
+  rec               RECORD;
+  v_elo_old         NUMERIC;
+  v_peer_old        NUMERIC;
+  v_S               NUMERIC;
+  v_E               NUMERIC;
+  v_elo_new         NUMERIC;
+  v_combined        NUMERIC;
 BEGIN
   -- Only process when status transitions TO 'confirmed'
   IF NEW.status != 'confirmed' OR OLD.status = 'confirmed' THEN
@@ -213,6 +216,24 @@ BEGIN
   v_w_elo  := 0.8 / (1.0 + 0.5 * LN(GREATEST(v_team_size::NUMERIC, 1.0)));
   v_w_peer := 1.0 - v_w_elo;
 
+  -- Compute team averages ONCE (team vs team, not individual vs team)
+  SELECT AVG(pr.elo_rating) INTO v_home_avg_elo
+  FROM match_participants mp2
+  JOIN player_ratings pr ON pr.player_id = mp2.player_id AND pr.sport = v_sport
+  WHERE mp2.match_id = v_match_id AND mp2.team_id = v_home_team_id AND mp2.status = 'confirmed';
+
+  SELECT AVG(pr.elo_rating) INTO v_away_avg_elo
+  FROM match_participants mp2
+  JOIN player_ratings pr ON pr.player_id = mp2.player_id AND pr.sport = v_sport
+  WHERE mp2.match_id = v_match_id AND mp2.team_id = v_away_team_id AND mp2.status = 'confirmed';
+
+  IF v_home_avg_elo IS NULL THEN v_home_avg_elo := 2.0; END IF;
+  IF v_away_avg_elo IS NULL THEN v_away_avg_elo := 2.0; END IF;
+
+  -- E from team averages — same E shared by all players on the same side
+  v_E_home := 1.0 / (1.0 + POWER(10.0, (v_away_avg_elo - v_home_avg_elo) / 3.0));
+  v_E_away := 1.0 - v_E_home;
+
   -- Update each confirmed participant
   FOR rec IN
     SELECT mp.player_id, mt.side AS team_side
@@ -230,33 +251,22 @@ BEGIN
     FROM player_ratings
     WHERE player_id = rec.player_id AND sport = v_sport;
 
-    -- Opponent average elo
+    -- Assign team-level E and individual S
     IF rec.team_side = 'home' THEN
-      SELECT AVG(pr.elo_rating) INTO v_opp_avg_elo
-      FROM match_participants mp2
-      JOIN player_ratings pr ON pr.player_id = mp2.player_id AND pr.sport = v_sport
-      WHERE mp2.match_id = v_match_id AND mp2.team_id = v_away_team_id AND mp2.status = 'confirmed';
-
+      v_E := v_E_home;
       IF v_final_winner = 'home'  THEN v_S := 1.0;
       ELSIF v_final_winner = 'away' THEN v_S := 0.0;
       ELSE v_S := 0.5;
       END IF;
     ELSE
-      SELECT AVG(pr.elo_rating) INTO v_opp_avg_elo
-      FROM match_participants mp2
-      JOIN player_ratings pr ON pr.player_id = mp2.player_id AND pr.sport = v_sport
-      WHERE mp2.match_id = v_match_id AND mp2.team_id = v_home_team_id AND mp2.status = 'confirmed';
-
+      v_E := v_E_away;
       IF v_final_winner = 'away'  THEN v_S := 1.0;
       ELSIF v_final_winner = 'home' THEN v_S := 0.0;
       ELSE v_S := 0.5;
       END IF;
     END IF;
 
-    IF v_opp_avg_elo IS NULL THEN v_opp_avg_elo := 2.0; END IF;
-
-    -- Elo formula (D = 3, scaled to 1-10 range)
-    v_E       := 1.0 / (1.0 + POWER(10.0, (v_opp_avg_elo - v_elo_old) / 3.0));
+    -- Elo delta applied to the player's own individual rating
     v_elo_new := GREATEST(1.0, LEAST(10.0, v_elo_old + v_K * (v_S - v_E)));
 
     -- Combined
