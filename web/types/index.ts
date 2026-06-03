@@ -28,9 +28,32 @@ export interface PlayerRating {
   player_id: string;
   sport: SportType;
   rating: number;
+  elo_rating: number;
+  peer_rating: number;
+  elo_applied: boolean;
   total_matches: number;
   wins: number;
   rating_count: number;
+}
+
+export type MatchResultStatus = 'submitted' | 'confirmed' | 'disputed' | 'abandoned';
+export type MatchWinnerSide = 'home' | 'away' | 'draw';
+
+export interface MatchResult {
+  id: string;
+  match_id: string;
+  submitted_by: string;
+  submitter_team: 'home' | 'away';
+  home_score: number;
+  away_score: number;
+  winner_side: MatchWinnerSide;
+  status: MatchResultStatus;
+  counter_submitted_by: string | null;
+  counter_home_score: number | null;
+  counter_away_score: number | null;
+  counter_winner_side: MatchWinnerSide | null;
+  elo_applied: boolean;
+  created_at: string;
 }
 
 export interface Match {
@@ -55,6 +78,7 @@ export interface Match {
   status: MatchStatus;
   price_per_player: number;
   currency: string;
+  rating_notifications_sent: boolean;
   created_at: string;
   // Joined
   profiles?: Profile;
@@ -79,6 +103,7 @@ export interface MatchParticipant {
   status: string;
   extra_spots: number;
   extra_spots_opponent?: number;
+  rating_submitted: boolean;
   profiles?: Profile;
 }
 

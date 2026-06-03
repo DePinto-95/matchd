@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useState, useCallback, use } from 'react';
+import { useEffect, useRef, useState, useCallback, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { MapPin, Clock, Users, Share2, ChevronLeft, Star, Lock, X } from 'lucide-react';
+import { MapPin, Clock, Users, Share2, ChevronLeft, Star, Lock, X, Trophy, AlertCircle, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useMatchStore } from '@/stores/matchStore';
 import { useFriendStore } from '@/stores/friendStore';
 import { useMatchRealtime } from '@/hooks/useRealtime';
+import { useMatchResult } from '@/hooks/useMatchResult';
 import { SPORTS } from '@/constants/sports';
 import { formatMatchDate, formatPrice, isMatchPast } from '@/lib/helpers';
-import { Match } from '@/types';
+import { Match, MatchWinnerSide } from '@/types';
 import { TeamSlots } from '@/components/match/TeamSlots';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
@@ -22,7 +23,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
   const router = useRouter();
   const { user, profile } = useAuthStore();
-  const { fetchMatchById } = useMatchStore();
+  const { fetchMatchById, notifyMatchCompletion } = useMatchStore();
   const { friends, fetchFriends, sendMatchInvites } = useFriendStore();
 
   const [match, setMatch] = useState<Match | null>(null);
@@ -39,6 +40,16 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const [selectedFriendIds, setSelectedFriendIds] = useState<Set<string>>(new Set());
   const [sendingInvites, setSendingInvites] = useState(false);
 
+  // Result reporting state
+  const [resultPanelOpen, setResultPanelOpen] = useState(false);
+  const [resultHomeScore, setResultHomeScore] = useState('');
+  const [resultAwayScore, setResultAwayScore] = useState('');
+  const [disputeHomeScore, setDisputeHomeScore] = useState('');
+  const [disputeAwayScore, setDisputeAwayScore] = useState('');
+  const [disputePanelOpen, setDisputePanelOpen] = useState(false);
+
+  const { result, loading: resultLoading, submitting: resultSubmitting, fetchResult, submitResult, acceptResult, disputeResult, acceptCounter, rejectCounter } = useMatchResult(id);
+
   const loadMatch = useCallback(async () => {
     const data = await fetchMatchById(id);
     setMatch(data);
@@ -52,9 +63,23 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   useMatchRealtime(id, loadMatch);
 
   const isParticipant = match?.match_participants?.some((p) => p.player_id === user?.id);
+
+  const notifiedRef = useRef(false);
+  useEffect(() => {
+    if (notifiedRef.current) return;
+    if (!match || !isParticipant || match.rating_notifications_sent) return;
+    if (!isMatchPast(match.scheduled_at, match.duration_minutes)) return;
+    notifiedRef.current = true;
+    notifyMatchCompletion(match.id);
+  }, [match, isParticipant, notifyMatchCompletion]);
+
   const isCreator = match?.creator_id === user?.id;
   const isFull = match?.status === 'full';
   const isPast = match ? isMatchPast(match.scheduled_at, match.duration_minutes) : false;
+
+  useEffect(() => {
+    if (isPast && isParticipant) fetchResult();
+  }, [isPast, isParticipant, fetchResult]);
 
   const myRow = match?.match_participants?.find((p) => p.player_id === user?.id);
   const myCurrentExtraSpots = myRow?.extra_spots ?? 0;
@@ -259,6 +284,58 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
 
   const statusVariant = match.status === 'open' ? 'success' : match.status === 'full' ? 'warning' : 'error';
 
+  // Result section helpers
+  const myTeamSide = match.match_teams?.find((t) => t.id === myRow?.team_id)?.side ?? null;
+  const isMyTurnToRespond =
+    (result?.status === 'submitted' && result.submitter_team !== myTeamSide) ||
+    (result?.status === 'disputed'  && result.submitter_team === myTeamSide);
+  const isWaitingForOther =
+    (result?.status === 'submitted' && result.submitter_team === myTeamSide) ||
+    (result?.status === 'disputed'  && result.submitter_team !== myTeamSide);
+
+  const deriveWinner = (home: string, away: string): MatchWinnerSide => {
+    const h = parseInt(home), a = parseInt(away);
+    if (h > a) return 'home';
+    if (a > h) return 'away';
+    return 'draw';
+  };
+
+  const handleSubmitResult = async () => {
+    if (!user || !myTeamSide) return;
+    const h = parseInt(resultHomeScore), a = parseInt(resultAwayScore);
+    if (isNaN(h) || isNaN(a)) { toast.error('Enter valid scores'); return; }
+    const { ok, error } = await submitResult(user.id, myTeamSide, h, a, deriveWinner(resultHomeScore, resultAwayScore));
+    if (!ok) toast.error(error ?? 'Failed to submit result');
+    else { toast.success('Result submitted — waiting for other team'); setResultPanelOpen(false); }
+  };
+
+  const handleAcceptResult = async () => {
+    if (!result) return;
+    const { ok, error } = await acceptResult(result.id);
+    if (!ok) toast.error(error ?? 'Failed to accept'); else toast.success('Result confirmed!');
+  };
+
+  const handleDisputeResult = async () => {
+    if (!result || !user) return;
+    const h = parseInt(disputeHomeScore), a = parseInt(disputeAwayScore);
+    if (isNaN(h) || isNaN(a)) { toast.error('Enter valid scores'); return; }
+    const { ok, error } = await disputeResult(result.id, user.id, h, a, deriveWinner(disputeHomeScore, disputeAwayScore));
+    if (!ok) toast.error(error ?? 'Failed to dispute');
+    else { toast.success('Counter-result submitted'); setDisputePanelOpen(false); }
+  };
+
+  const handleAcceptCounter = async () => {
+    if (!result) return;
+    const { ok, error } = await acceptCounter(result.id);
+    if (!ok) toast.error(error ?? 'Failed'); else toast.success('Result confirmed!');
+  };
+
+  const handleRejectCounter = async () => {
+    if (!result) return;
+    const { ok, error } = await rejectCounter(result.id);
+    if (!ok) toast.error(error ?? 'Failed'); else toast.success('Ratings will be based on player reviews only.');
+  };
+
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
       {/* Back */}
@@ -327,6 +404,193 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
             participants={match.match_participants ?? []}
             teamSize={match.team_size}
           />
+        </div>
+      )}
+
+      {/* Match Result — only for past matches where user participated */}
+      {isPast && isParticipant && (
+        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+          <div className="px-6 pt-5 pb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-text-muted" />
+              <h2 className="font-heading font-bold text-lg text-text">Match Result</h2>
+            </div>
+            {resultLoading && <div className="w-4 h-4 rounded-full border-2 border-brand border-t-transparent animate-spin" />}
+          </div>
+
+          <div className="px-6 pb-5 flex flex-col gap-4">
+            {/* CONFIRMED */}
+            {result?.status === 'confirmed' && (
+              <div className="flex items-center gap-3 p-4 bg-success/5 border border-success/30 rounded-xl">
+                <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-success text-sm">Result confirmed</p>
+                  <p className="text-text-muted text-xs mt-0.5">
+                    Home {result.counter_submitted_by ? result.counter_home_score : result.home_score}
+                    {' – '}
+                    {result.counter_submitted_by ? result.counter_away_score : result.away_score} Away
+                    {' · '}
+                    {(result.counter_submitted_by ? result.counter_winner_side : result.winner_side) === 'draw'
+                      ? 'Draw'
+                      : `${(result.counter_submitted_by ? result.counter_winner_side : result.winner_side) === 'home' ? 'Home' : 'Away'} team wins`}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ABANDONED */}
+            {result?.status === 'abandoned' && (
+              <div className="flex items-center gap-3 p-4 bg-warning/5 border border-warning/30 rounded-xl">
+                <AlertCircle className="w-5 h-5 text-warning flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-warning text-sm">Result disputed</p>
+                  <p className="text-text-muted text-xs mt-0.5">Ratings will be based on player reviews only</p>
+                </div>
+              </div>
+            )}
+
+            {/* PENDING — no result yet, user can submit */}
+            {!result && !resultLoading && (
+              <>
+                {!resultPanelOpen ? (
+                  <Button variant="secondary" onClick={() => setResultPanelOpen(true)}>
+                    Report Result
+                  </Button>
+                ) : (
+                  <div className="flex flex-col gap-4 p-4 bg-surface-alt rounded-xl border border-border">
+                    <p className="text-sm text-text-muted">Enter the final score</p>
+                    <div className="grid grid-cols-3 items-center gap-2">
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="text-xs text-text-muted">Home</span>
+                        <input
+                          type="number" min="0" placeholder="0"
+                          value={resultHomeScore}
+                          onChange={(e) => setResultHomeScore(e.target.value)}
+                          className="w-full text-center px-3 py-2 rounded-lg bg-surface border border-border text-text text-lg font-bold focus:outline-none focus:border-brand"
+                        />
+                      </div>
+                      <div className="text-center text-2xl font-bold text-text-muted">–</div>
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="text-xs text-text-muted">Away</span>
+                        <input
+                          type="number" min="0" placeholder="0"
+                          value={resultAwayScore}
+                          onChange={(e) => setResultAwayScore(e.target.value)}
+                          className="w-full text-center px-3 py-2 rounded-lg bg-surface border border-border text-text text-lg font-bold focus:outline-none focus:border-brand"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="secondary" className="flex-1" onClick={() => setResultPanelOpen(false)}>Cancel</Button>
+                      <Button className="flex-1" loading={resultSubmitting} onClick={handleSubmitResult}>Submit</Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* SUBMITTED — waiting for other team, or user can respond */}
+            {result?.status === 'submitted' && (
+              <>
+                {isWaitingForOther && (
+                  <div className="flex items-center gap-3 p-4 bg-surface-alt border border-border rounded-xl">
+                    <div className="w-2 h-2 rounded-full bg-warning animate-pulse flex-shrink-0" />
+                    <div>
+                      <p className="text-sm text-text">Waiting for the other team</p>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        You submitted: Home {result.home_score} – {result.away_score} Away
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {isMyTurnToRespond && (
+                  <div className="flex flex-col gap-3">
+                    <div className="p-4 bg-surface-alt border border-border rounded-xl">
+                      <p className="text-sm text-text font-medium">Other team reported</p>
+                      <p className="text-2xl font-bold text-text my-2">
+                        {result.home_score} – {result.away_score}
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        {result.winner_side === 'draw' ? 'Draw' : `${result.winner_side === 'home' ? 'Home' : 'Away'} team wins`}
+                      </p>
+                    </div>
+                    {!disputePanelOpen ? (
+                      <div className="flex gap-2">
+                        <Button variant="secondary" className="flex-1" loading={resultSubmitting} onClick={() => setDisputePanelOpen(true)}>Dispute</Button>
+                        <Button className="flex-1" loading={resultSubmitting} onClick={handleAcceptResult}>Accept</Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3 p-4 bg-surface-alt rounded-xl border border-border">
+                        <p className="text-sm text-text-muted">Enter the actual score</p>
+                        <div className="grid grid-cols-3 items-center gap-2">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-xs text-text-muted">Home</span>
+                            <input
+                              type="number" min="0" placeholder="0"
+                              value={disputeHomeScore}
+                              onChange={(e) => setDisputeHomeScore(e.target.value)}
+                              className="w-full text-center px-3 py-2 rounded-lg bg-surface border border-border text-text text-lg font-bold focus:outline-none focus:border-brand"
+                            />
+                          </div>
+                          <div className="text-center text-2xl font-bold text-text-muted">–</div>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-xs text-text-muted">Away</span>
+                            <input
+                              type="number" min="0" placeholder="0"
+                              value={disputeAwayScore}
+                              onChange={(e) => setDisputeAwayScore(e.target.value)}
+                              className="w-full text-center px-3 py-2 rounded-lg bg-surface border border-border text-text text-lg font-bold focus:outline-none focus:border-brand"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="secondary" className="flex-1" onClick={() => setDisputePanelOpen(false)}>Cancel</Button>
+                          <Button className="flex-1" loading={resultSubmitting} onClick={handleDisputeResult}>Submit Counter</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* DISPUTED — Team A responds to counter */}
+            {result?.status === 'disputed' && (
+              <>
+                {isWaitingForOther && (
+                  <div className="flex items-center gap-3 p-4 bg-surface-alt border border-border rounded-xl">
+                    <div className="w-2 h-2 rounded-full bg-warning animate-pulse flex-shrink-0" />
+                    <div>
+                      <p className="text-sm text-text">Waiting for the other team</p>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        Counter submitted: Home {result.counter_home_score} – {result.counter_away_score} Away
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {isMyTurnToRespond && (
+                  <div className="flex flex-col gap-3">
+                    <div className="p-4 bg-surface-alt border border-border rounded-xl">
+                      <p className="text-sm text-text font-medium">Other team disputes — their score</p>
+                      <p className="text-2xl font-bold text-text my-2">
+                        {result.counter_home_score} – {result.counter_away_score}
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        {result.counter_winner_side === 'draw' ? 'Draw' : `${result.counter_winner_side === 'home' ? 'Home' : 'Away'} team wins`}
+                      </p>
+                    </div>
+                    <p className="text-xs text-text-muted px-1">
+                      If you reject, no result is recorded — ratings will be based on player reviews only.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button variant="danger" className="flex-1" loading={resultSubmitting} onClick={handleRejectCounter}>Reject</Button>
+                      <Button className="flex-1" loading={resultSubmitting} onClick={handleAcceptCounter}>Accept</Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -499,7 +763,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
           <Users className="w-5 h-5" />
         </button>
 
-        {isPast && isParticipant && (
+        {isPast && isParticipant && !myRow?.rating_submitted && (
           <Link href={`/matches/${id}/rate`} className="flex-1">
             <Button size="lg" className="w-full">Rate Players</Button>
           </Link>
