@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { MatchResult, MatchWinnerSide } from '@/types';
 
@@ -17,6 +17,35 @@ export const useMatchResult = (matchId: string) => {
     setResult(data ?? null);
     setLoading(false);
     return data as MatchResult | null;
+  }, [matchId]);
+
+  // Realtime: refresh when the other team accepts, disputes, or rejects
+  useEffect(() => {
+    const channel = supabase
+      .channel(`match_result:${matchId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'match_results',
+          filter: `match_id=eq.${matchId}`,
+        },
+        (payload) => setResult(payload.new as MatchResult),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'match_results',
+          filter: `match_id=eq.${matchId}`,
+        },
+        (payload) => setResult(payload.new as MatchResult),
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [matchId]);
 
   const submitResult = async (
