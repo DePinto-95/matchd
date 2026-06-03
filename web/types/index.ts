@@ -79,6 +79,7 @@ export interface Match {
   price_per_player: number;
   currency: string;
   rating_notifications_sent: boolean;
+  confirmation_sent_at: string | null;
   created_at: string;
   // Joined
   profiles?: Profile;

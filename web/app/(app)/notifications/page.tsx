@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, CheckCheck, Users, Share2, Star, X, Trophy } from 'lucide-react';
+import { Bell, CheckCheck, Users, Share2, Star, X, Trophy, HelpCircle } from 'lucide-react';
 import { SPORTS } from '@/constants/sports';
 import type { SportType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
@@ -58,8 +58,11 @@ export default function NotificationsPage() {
             const isFriendType = n.type === 'friend_request' || n.type === 'friend_accepted';
             const isMatchInvite = n.type === 'match_invite';
             const isRatePlayers = n.type === 'rate_players';
-            const isMatchCompleted = n.type === 'match_completed';
-            const sport = (isMatchInvite || isRatePlayers || isMatchCompleted) ? (n.data as { sport?: SportType })?.sport : undefined;
+            const isMatchCompleted    = n.type === 'match_completed';
+            const isMatchHappenedCheck = n.type === 'match_happened_check';
+            const sport = (isMatchInvite || isRatePlayers || isMatchCompleted || isMatchHappenedCheck)
+              ? (n.data as { sport?: SportType })?.sport
+              : undefined;
             const matchEmoji = sport ? (SPORTS[sport]?.emoji ?? '🏅') : null;
 
             return (
@@ -70,7 +73,7 @@ export default function NotificationsPage() {
                     if (isRatePlayers) {
                       const matchId = (n.data as { match_id?: string })?.match_id;
                       if (matchId) router.push(`/matches/${matchId}/rate`);
-                    } else if (isMatchCompleted) {
+                    } else if (isMatchCompleted || isMatchHappenedCheck) {
                       const matchId = (n.data as { match_id?: string })?.match_id;
                       if (matchId) router.push(`/matches/${matchId}`);
                     } else if (isMatchInvite) {
@@ -91,7 +94,8 @@ export default function NotificationsPage() {
                     <div className={`flex items-start gap-2 flex-1 ${n.read ? 'pl-5' : ''}`}>
                       {isFriendType && <Users className="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />}
                       {isRatePlayers && <Star className="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />}
-                      {isMatchCompleted && <Trophy className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />}
+                      {isMatchCompleted     && <Trophy     className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />}
+                      {isMatchHappenedCheck && <HelpCircle className="w-4 h-4 text-brand  flex-shrink-0 mt-0.5" />}
                       {isMatchInvite && <span className="text-base leading-none flex-shrink-0">{matchEmoji ?? <Share2 className="w-4 h-4" />}</span>}
                       <div className="flex-1 pr-6">
                         <p className="text-sm font-medium text-text">{n.title}</p>

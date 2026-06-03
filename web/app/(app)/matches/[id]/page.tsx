@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { MapPin, Clock, Users, Share2, ChevronLeft, Star, Lock, X, Trophy, AlertCircle, CheckCircle } from 'lucide-react';
+import { MapPin, Clock, Users, Share2, ChevronLeft, Star, Lock, X, Trophy, AlertCircle, CheckCircle, HelpCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useMatchStore } from '@/stores/matchStore';
@@ -222,6 +222,22 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
     router.push('/');
   };
 
+  const handleConfirmMatchHappened = async () => {
+    if (!match) return;
+    await supabase.from('matches').update({ status: 'completed' }).eq('id', match.id);
+    await supabase.rpc('notify_match_completion', { p_match_id: match.id });
+    toast.success('Match confirmed! Players will be notified to rate and report the result.');
+    loadMatch();
+  };
+
+  const handleConfirmMatchDidntHappen = async () => {
+    if (!match) return;
+    if (!confirm('This will cancel the match for all participants. Continue?')) return;
+    await supabase.from('matches').update({ status: 'cancelled' }).eq('id', match.id);
+    toast.success('Match marked as not happened.');
+    router.push('/');
+  };
+
   const handleShare = () => {
     if (!match) return;
     const text = match.is_private && match.invite_code
@@ -404,6 +420,31 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
             participants={match.match_participants ?? []}
             teamSize={match.team_size}
           />
+        </div>
+      )}
+
+      {/* Did the match happen? — shown to creator when match ended without filling up */}
+      {isPast && isCreator && match.status === 'open' && (
+        <div className="bg-surface border border-brand/30 rounded-2xl p-6 flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-brand/10 flex items-center justify-center flex-shrink-0">
+              <HelpCircle className="w-5 h-5 text-brand" />
+            </div>
+            <div>
+              <h2 className="font-heading font-bold text-base text-text">Did this match happen?</h2>
+              <p className="text-text-muted text-xs mt-0.5">
+                The scheduled time has passed. Let us know so players can rate and report the result.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="secondary" className="flex-1" onClick={handleConfirmMatchDidntHappen}>
+              No, it didn't
+            </Button>
+            <Button className="flex-1" onClick={handleConfirmMatchHappened}>
+              Yes, it happened
+            </Button>
+          </div>
         </div>
       )}
 
@@ -810,7 +851,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
           </>
         )}
 
-        {isCreator && match.status !== 'cancelled' && (
+        {isCreator && match.status !== 'cancelled' && !isPast && (
           <>
             <Button
               variant="secondary"
