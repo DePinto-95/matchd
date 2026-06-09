@@ -14,6 +14,8 @@ import { generateInviteCode } from '@/lib/helpers';
 import { SportType } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DatePicker } from '@/components/ui/DatePicker';
+import { TimePicker } from '@/components/ui/TimePicker';
 
 const schema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(60),
@@ -24,7 +26,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 const STEP_LABELS = ['Sport', 'Details', 'Date & Time', 'Settings'];
-const DURATIONS = [45, 60, 75, 90, 120];
+const DURATIONS = [1, 45, 60, 75, 90, 120];
 
 export default function CreateMatchPage() {
   const router = useRouter();
@@ -48,20 +50,14 @@ export default function CreateMatchPage() {
 
   const teamSizes = sport ? SPORTS[sport].teamSizes : [5];
 
-  const formatDateInput = (raw: string) => {
-    const digits = raw.replace(/\D/g, '').slice(0, 8);
-    let result = '';
-    for (let i = 0; i < digits.length; i++) {
-      if (i === 2 || i === 4) result += '/';
-      result += digits[i];
-    }
-    return result;
-  };
-
-  const formatTimeInput = (raw: string) => {
-    const digits = raw.replace(/\D/g, '').slice(0, 4);
-    if (digits.length <= 2) return digits;
-    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  const fillTestMatch = () => {
+    const t = new Date();
+    t.setMinutes(t.getMinutes() + 1);
+    setScheduledDate(
+      `${String(t.getDate()).padStart(2, '0')}/${String(t.getMonth() + 1).padStart(2, '0')}/${t.getFullYear()}`
+    );
+    setScheduledTime(`${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`);
+    setDuration(1);
   };
 
   const parseDateTimeInputs = () => {
@@ -114,55 +110,60 @@ export default function CreateMatchPage() {
     const scheduledAt = parseDateTimeInputs()!.toISOString();
 
     setLoading(true);
-    const inviteCode = isPrivate ? generateInviteCode() : null;
+    try {
+      const inviteCode = isPrivate ? generateInviteCode() : null;
 
-    const { data: match, error } = await supabase
-      .from('matches')
-      .insert({
-        creator_id: user.id,
-        sport,
-        title: data.title,
-        description: data.description ?? null,
-        location_name: data.location_name,
-        scheduled_at: scheduledAt,
-        duration_minutes: duration,
-        max_players: maxPlayers,
-        team_size: teamSize,
-        min_rating: minR,
-        max_rating: maxR,
-        is_private: isPrivate,
-        invite_code: inviteCode,
-        status: 'open',
-      })
-      .select()
-      .single();
+      const { data: match, error } = await supabase
+        .from('matches')
+        .insert({
+          creator_id: user.id,
+          sport,
+          title: data.title,
+          description: data.description ?? null,
+          location_name: data.location_name,
+          scheduled_at: scheduledAt,
+          duration_minutes: duration,
+          max_players: maxPlayers,
+          team_size: teamSize,
+          min_rating: minR,
+          max_rating: maxR,
+          is_private: isPrivate,
+          invite_code: inviteCode,
+          status: 'open',
+        })
+        .select()
+        .single();
 
-    if (error || !match) {
-      toast.error('Could not create match. Please try again.');
+      if (error || !match) {
+        toast.error('Could not create match. Please try again.');
+        return;
+      }
+
+      await supabase.from('match_teams').insert([
+        { match_id: match.id, side: 'home', name: 'Home' },
+        { match_id: match.id, side: 'away', name: 'Away' },
+      ]);
+
+      const { data: teams } = await supabase
+        .from('match_teams').select('id, side').eq('match_id', match.id);
+
+      const homeTeam = teams?.find((t: { side: string }) => t.side === 'home');
+      if (homeTeam) {
+        await supabase.from('match_participants').insert({
+          match_id: match.id,
+          player_id: user.id,
+          team_id: homeTeam.id,
+          status: 'confirmed',
+        });
+      }
+
+      toast.success('Match created!');
+      router.push(`/matches/${match.id}`);
+    } catch {
+      toast.error('Something went wrong. Please try again.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    await supabase.from('match_teams').insert([
-      { match_id: match.id, side: 'home', name: 'Home' },
-      { match_id: match.id, side: 'away', name: 'Away' },
-    ]);
-
-    const { data: teams } = await supabase
-      .from('match_teams').select('id, side').eq('match_id', match.id);
-
-    const homeTeam = teams?.find((t: { side: string }) => t.side === 'home');
-    if (homeTeam) {
-      await supabase.from('match_participants').insert({
-        match_id: match.id,
-        player_id: user.id,
-        team_id: homeTeam.id,
-        status: 'confirmed',
-      });
-    }
-
-    toast.success('Match created!');
-    router.push(`/matches/${match.id}`);
   };
 
   const sportConfig = sport ? SPORTS[sport] : null;
@@ -292,21 +293,22 @@ export default function CreateMatchPage() {
       {/* Step 2: Date & Time */}
       {step === 2 && (
         <div className="flex flex-col gap-5">
-          <Input
+          <button
+            type="button"
+            onClick={fillTestMatch}
+            className="self-start px-3 py-1.5 rounded-lg text-xs font-semibold bg-warning/15 text-warning border border-warning/30 hover:bg-warning/25 transition-colors"
+          >
+            ⚡ Fill: 1 min test
+          </button>
+          <DatePicker
             label="Date *"
-            type="text"
-            placeholder="DD/MM/YYYY"
-            maxLength={10}
             value={scheduledDate}
-            onChange={(e) => setScheduledDate(formatDateInput(e.target.value))}
+            onChange={setScheduledDate}
           />
-          <Input
+          <TimePicker
             label="Time * (24h)"
-            type="text"
-            placeholder="HH:MM"
-            maxLength={5}
             value={scheduledTime}
-            onChange={(e) => setScheduledTime(formatTimeInput(e.target.value))}
+            onChange={setScheduledTime}
           />
           <div>
             <label className="text-sm font-medium text-text-muted mb-2 block">Duration</label>
