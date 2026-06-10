@@ -9,6 +9,7 @@ How to verify the Elo + review-rating system (including 5v5) yourself.
 | `rating_sim.py` | Trigger-faithful simulator: ports `update_player_rating` (reviews) and `update_elo_rating` (Elo) plus the review-assignment algorithm. Prints exploratory scenarios. |
 | `rating_tests_5v5.py` | **Assertion-based test suite** (32 cases): Elo mechanics, review hardening, combined rating, full 5v5 season pipeline. Exits non-zero on any failure. |
 | `rating_weight_by_reviews.sql` | Latest migration: the combined-rating blend weight comes from **reviews received** (see below), superseding the team-size weight in `rating_hardening.sql` / `elo_trigger_fix.sql`. |
+| `review_deadline.sql` | Reviews can only be submitted within **7 days** of match start (DB trigger). Ratings update per review as they arrive, so a closed window needs no recalculation — missing reviews just leave more weight on Elo. |
 | `test_combined.sql` | Runs the same sequence as Scenario 1 of the simulator **against the live Supabase triggers** (rolled back at the end). Use it to confirm the deployed SQL matches the simulator. |
 
 ## Run

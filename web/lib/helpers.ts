@@ -16,6 +16,15 @@ export const isMatchPast = (scheduledAt: string, durationMinutes: number): boole
   return isPast(end);
 };
 
+// Reviews close 7 days after match start — mirrors the
+// enforce_review_deadline DB trigger (review_deadline.sql).
+export const REVIEW_WINDOW_DAYS = 7;
+
+export const isReviewWindowClosed = (scheduledAt: string): boolean => {
+  const deadline = new Date(scheduledAt).getTime() + REVIEW_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  return Date.now() > deadline;
+};
+
 export const generateInviteCode = (): string => {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 };

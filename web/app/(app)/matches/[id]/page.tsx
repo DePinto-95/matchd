@@ -12,7 +12,7 @@ import { useFriendStore } from '@/stores/friendStore';
 import { useMatchRealtime } from '@/hooks/useRealtime';
 import { useMatchResult } from '@/hooks/useMatchResult';
 import { SPORTS } from '@/constants/sports';
-import { formatMatchDate, formatPrice, isMatchPast } from '@/lib/helpers';
+import { formatMatchDate, formatPrice, isMatchPast, isReviewWindowClosed } from '@/lib/helpers';
 import { Match, MatchWinnerSide } from '@/types';
 import { TeamSlots } from '@/components/match/TeamSlots';
 import { Avatar } from '@/components/ui/Avatar';
@@ -813,7 +813,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
           <Users className="w-5 h-5" />
         </button>
 
-        {isPast && isParticipant && !myRow?.rating_submitted && (
+        {isPast && isParticipant && !myRow?.rating_submitted && !isReviewWindowClosed(match.scheduled_at) && (
           <Link href={`/matches/${id}/rate`} className="flex-1">
             <Button size="lg" className="w-full">Rate Players</Button>
           </Link>

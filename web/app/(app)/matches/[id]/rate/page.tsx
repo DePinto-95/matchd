@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Star, CheckCircle } from 'lucide-react';
+import { ChevronLeft, Star, CheckCircle, Clock } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useMatchStore } from '@/stores/matchStore';
 import { useRatings } from '@/hooks/useRatings';
@@ -11,6 +11,7 @@ import { Match, MatchParticipant } from '@/types';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase/client';
+import { isReviewWindowClosed, REVIEW_WINDOW_DAYS } from '@/lib/helpers';
 import { toast } from 'sonner';
 
 export default function RatePlayersPage({ params }: { params: Promise<{ id: string }> }) {
@@ -81,6 +82,10 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
 
   const handleRate = async (p: MatchParticipant) => {
     if (!user) return;
+    if (match && isReviewWindowClosed(match.scheduled_at)) {
+      toast.error(`Reviews close ${REVIEW_WINDOW_DAYS} days after the match`);
+      return;
+    }
     const score = scores[p.player_id];
     if (!score || score < 1 || score > 10) {
       toast.error('Please enter a score between 1 and 10');
@@ -111,6 +116,26 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
     return (
       <div className="flex items-center justify-center py-32">
         <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (isReviewWindowClosed(match.scheduled_at)) {
+    return (
+      <div className="max-w-xl mx-auto flex flex-col gap-6">
+        <button onClick={() => router.back()} className="flex items-center gap-2 text-text-muted hover:text-text transition-colors w-fit">
+          <ChevronLeft className="w-4 h-4" />
+          <span className="text-sm">Back</span>
+        </button>
+        <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
+          <Clock className="w-12 h-12 text-text-muted" />
+          <h2 className="font-heading font-bold text-xl text-text">Review period ended</h2>
+          <p className="text-text-muted text-sm">
+            Reviews close {REVIEW_WINDOW_DAYS} days after the match. Skipped reviews
+            don&apos;t affect anyone&apos;s rating.
+          </p>
+          <Button onClick={() => router.push('/')}>Back to home</Button>
+        </div>
       </div>
     );
   }

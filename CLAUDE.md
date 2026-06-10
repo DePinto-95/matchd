@@ -107,7 +107,7 @@ All sport metadata lives in `constants/sports.ts`. Reference `SPORTS[sport]` eve
 
 **Match date validation**: Matches must be scheduled in the future and no more than 1 year ahead. Date input is `DD/MM/YYYY`, time is `HH:MM` (24h). Both auto-format as the user types.
 
-**Rating system**: Ratings are never self-reported. After a match completes, players rate opponents via `match_ratings`. The `update_player_rating` DB trigger recalculates the rolling average.
+**Rating system**: Ratings are never self-reported. After a match completes, players rate assigned teammates/opponents via `match_ratings`. The `update_player_rating` DB trigger recalculates the rolling average per review (no waiting for all reviews); the combined rating blends Elo and reviews weighted by reviews received (`min(0.6, n/(n+4))`). Reviews close 7 days after match start — enforced by the `enforce_review_deadline` trigger (`review_deadline.sql`) and mirrored by `isReviewWindowClosed` in `lib/helpers.ts`. Skipped/missing reviews need no special handling: they simply leave more weight on Elo.
 
 **Private matches**: Set `is_private = true` and share the `invite_code`. Join is only possible with the code.
 
