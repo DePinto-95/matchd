@@ -307,6 +307,46 @@ def review_habitual_rater_normalizes(expect):
     expect(abs(adj - 5.0) < 1e-9, f"habitual 8-giver should adjust to 5, got {adj}")
 
 
+def _neutral_rater(sim, name):
+    """Give a rater a neutral history: avg exactly 5 across 4 distinct
+    dummies -> zero bias correction, full credibility."""
+    for i, s in enumerate([2, 4, 6, 8]):
+        sim.review(name, f'{name}-dummy{i}', SPORT, s, 5)
+
+
+@test
+def review_improvement_not_buried_by_history(expect):
+    """Peer is an EMA, not a lifetime mean: the pull of a new review NEVER
+    depends on how many reviews the RATED player has received. A player
+    with 500 lifetime reviews moves exactly as fast as one with 5, and a
+    player who improves converges within ~3 5v5 matches."""
+    sim = Sim()
+    sim.row('T1', SPORT).update(peer=3.0, rating_count=5)
+    sim.row('T2', SPORT).update(peer=3.0, rating_count=500)
+    _neutral_rater(sim, 'R1')
+    _neutral_rater(sim, 'R2')
+    sim.review('R1', 'T1', SPORT, 8, 5)
+    sim.review('R2', 'T2', SPORT, 8, 5)
+    p1, p2 = sim.get('T1', SPORT)['peer'], sim.get('T2', SPORT)['peer']
+    expect(abs(p1 - p2) < 1e-12,
+           f"same review moved players differently by lifetime count: {p1} vs {p2}")
+    expect(abs(p1 - (0.82 * 3.0 + 0.18 * 8.0)) < 1e-12,
+           f"full-credibility review must pull 18%: got peer {p1}")
+
+    # convergence: long-mediocre player (peer 3.0) starts earning 8s
+    sim2 = Sim()
+    sim2.row('T', SPORT).update(peer=3.0, rating_count=200)
+    track = []
+    for i in range(12):
+        _neutral_rater(sim2, f'N{i}')
+        sim2.review(f'N{i}', 'T', SPORT, 8, 5)
+        track.append(sim2.get('T', SPORT)['peer'])
+    expect(track[3] > 5.5, f"after 1 match (4 reviews) peer {track[3]:.2f}, want > 5.5")
+    expect(track[11] > 7.3, f"after 3 matches (12 reviews) peer {track[11]:.2f}, want > 7.3")
+    FINDINGS.append(f"improvement curve (peer 3.0, then 8s): after 4 reviews "
+                    f"{track[3]:.2f}, after 8 {track[7]:.2f}, after 12 {track[11]:.2f}")
+
+
 @test
 def review_sockpuppet_bounded(expect):
     """Sybil attack: one friend (rates ONLY the target) spams 9s twenty times
