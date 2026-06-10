@@ -258,6 +258,148 @@ def sc_sockpuppet_with_elo():
     all_in_range(sim)
 
 
+# ════════════════════════════════════════════════════════════════
+#  Review assignment — faithful port of web/lib/reviewAssignment.ts
+#  (xmur3 hash + mulberry32 PRNG + seeded shuffle + circular pick)
+# ════════════════════════════════════════════════════════════════
+MASK = 0xFFFFFFFF
+MAX_PER_SIDE = 2
+
+
+def _i32(x):
+    x &= MASK
+    return x - 0x100000000 if x & 0x80000000 else x
+
+
+def _u32(x):
+    return x & MASK
+
+
+def _imul(a, b):
+    return _i32((_u32(a) * _u32(b)) & MASK)
+
+
+def _js_round(x):
+    # JS Math.round rounds halves toward +inf (Python's round() is banker's)
+    return math.floor(x + 0.5)
+
+
+def _hash_string(s):
+    h = _i32(1779033703 ^ len(s))
+    for ch in s:
+        h = _imul(_i32(h ^ ord(ch)), 3432918353)
+        h = _i32(((_u32(h) << 13) & MASK) | (_u32(h) >> 19))
+    return _u32(_i32(h ^ (_u32(h) >> 16)))
+
+
+def _mulberry32(seed):
+    a = _i32(seed)
+
+    def rng():
+        nonlocal a
+        a = _i32(a + 0x6D2B79F5)
+        t = _imul(_i32(_u32(a) ^ (_u32(a) >> 15)), _i32(1 | _u32(a)))
+        t = _i32(_i32(t + _imul(_i32(_u32(t) ^ (_u32(t) >> 7)), _i32(61 | _u32(t)))) ^ t)
+        return _u32(_i32(t ^ (_u32(t) >> 14))) / 4294967296.0
+
+    return rng
+
+
+def _seeded_shuffle(arr, seed):
+    rng = _mulberry32(_hash_string(seed))
+    a = list(arr)
+    for i in range(len(a) - 1, 0, -1):
+        j = int(rng() * (i + 1))  # Math.floor
+        a[i], a[j] = a[j], a[i]
+    return a
+
+
+def review_side_count(available):
+    if available <= 0:
+        return 0
+    return min(MAX_PER_SIDE, _js_round(available / 2))
+
+
+def get_review_assignment(participants, my_id, my_team_id, match_id):
+    confirmed = [p for p in participants if p['status'] == 'confirmed']
+    my_team_all = _seeded_shuffle(
+        sorted((p for p in confirmed if p['team_id'] == my_team_id), key=lambda p: p['player_id']),
+        match_id + ':team')
+    opp_all = _seeded_shuffle(
+        sorted((p for p in confirmed if p['team_id'] != my_team_id), key=lambda p: p['player_id']),
+        match_id + ':opp')
+    n, m = len(my_team_all), len(opp_all)
+    my_pos = next((i for i, p in enumerate(my_team_all) if p['player_id'] == my_id), 0)
+    k_team = review_side_count(n - 1)
+    k_opp = review_side_count(m)
+
+    assigned_team, step = [], 1
+    while len(assigned_team) < k_team and step < n:
+        assigned_team.append(my_team_all[(my_pos + step) % n]); step += 1
+    assigned_opp, step = [], 0
+    while len(assigned_opp) < k_opp and step < m:
+        assigned_opp.append(opp_all[(my_pos + step) % m]); step += 1
+    return assigned_team, assigned_opp
+
+
+def _make_match(ts):
+    home = [{'player_id': f'H{i}', 'team_id': 'home', 'status': 'confirmed'} for i in range(ts)]
+    away = [{'player_id': f'A{i}', 'team_id': 'away', 'status': 'confirmed'} for i in range(ts)]
+    return home + away
+
+
+def _assignment_edges(parts, match_id):
+    edges = {}
+    for p in parts:
+        at, ao = get_review_assignment(parts, p['player_id'], p['team_id'], match_id)
+        edges[p['player_id']] = [x['player_id'] for x in at] + [x['player_id'] for x in ao]
+    return edges
+
+
+def sc_review_balance():
+    print("\n=== Scenario 7: review assignment — balanced across team sizes ===")
+    for ts in [1, 2, 3, 5, 6, 8]:
+        parts = _make_match(ts)
+        edges = _assignment_edges(parts, 'match-abc-123')
+        given = {p: len(v) for p, v in edges.items()}
+        recv = {p['player_id']: 0 for p in parts}
+        for vs in edges.values():
+            for t in vs:
+                recv[t] += 1
+        gv, rv = list(given.values()), list(recv.values())
+        print(f"  {ts}v{ts}: gives=[{min(gv)}..{max(gv)}]  receives=[{min(rv)}..{max(rv)}]")
+        # equal teams => every player must receive an identical count
+        check(min(rv) == max(rv), f"{ts}v{ts}: received not balanced [{min(rv)}..{max(rv)}]")
+        check(min(gv) == max(gv), f"{ts}v{ts}: given not balanced [{min(gv)}..{max(gv)}]")
+
+    # concrete sample table (compare to the hand-built example)
+    parts = _make_match(5)
+    edges = _assignment_edges(parts, 'match-abc-123')
+    print("  sample 5v5 assignment (match-abc-123):")
+    for p in parts:
+        print(f"    {p['player_id']} -> {', '.join(edges[p['player_id']])}")
+
+
+def sc_review_random():
+    print("\n=== Scenario 8: review assignment — random per match, still balanced ===")
+    parts = _make_match(5)
+    seen = set()
+    for mid in ['m1', 'm2', 'm3', 'm4', 'm5']:
+        edges = _assignment_edges(parts, mid)
+        sig = tuple(sorted((r, tuple(sorted(vs))) for r, vs in edges.items()))
+        seen.add(sig)
+        recv = {p['player_id']: 0 for p in parts}
+        for vs in edges.values():
+            for t in vs:
+                recv[t] += 1
+        rv = list(recv.values())
+        status = 'balanced' if min(rv) == max(rv) else f'UNBALANCED[{min(rv)}..{max(rv)}]'
+        print(f"  {mid}: {status}  (received {min(rv)} each)")
+        check(min(rv) == max(rv), f"{mid}: 5v5 received not balanced")
+    print(f"  distinct assignments across 5 match ids: {len(seen)}  (random => > 1)")
+    check(len(seen) > 1, "assignment identical across all match ids — not random")
+
+
 if __name__ == '__main__':
     sc_1v1_combined()
     sc_5v5_single()
@@ -265,6 +407,8 @@ if __name__ == '__main__':
     sc_weight_instability()
     sc_total_matches_gate()
     sc_sockpuppet_with_elo()
+    sc_review_balance()
+    sc_review_random()
 
     print("\n" + "=" * 60)
     if PROBLEMS:
