@@ -404,6 +404,47 @@ def combined_weight_anchors(expect):
 
 
 @test
+def elo_immutable_under_reviews(expect):
+    """Reviews NEVER touch elo. Elo is written exactly once per confirmed
+    match; a review only updates peer and re-blends the displayed rating
+    from the stored components."""
+    sim = Sim()
+    H, A, parts = parts5()
+    sim.confirm(SPORT, 5, parts, 'home')
+    elo_before = sim.get('H0', SPORT)['elo']
+    for i in range(50):
+        sim.review(f'R{i}', 'H0', SPORT, 9, 5)
+    r = sim.get('H0', SPORT)
+    expect(r['elo'] == elo_before,
+           f"elo changed from reviews alone: {elo_before} -> {r['elo']}")
+    w = w_peer_for(r['rating_count'])
+    want = (1 - w) * r['elo'] + w * r['peer']
+    expect(abs(r['rating'] - want) < 1e-12, "blend not recomposed from stored parts")
+
+
+@test
+def combined_order_independent_within_match(expect):
+    """Confirming the result then receiving 4 reviews ends in EXACTLY the
+    same state as receiving the 4 reviews first and confirming after.
+    The displayed rating is a pure function of (elo, peer, count), so
+    event order within a match cannot change the outcome."""
+    def play(confirm_first):
+        sim = Sim()
+        H, A, parts = parts5()
+        reviews = [('A0', 'H0', 7), ('A1', 'H0', 6), ('H1', 'H0', 8), ('H2', 'H0', 5)]
+        if confirm_first:
+            sim.confirm(SPORT, 5, parts, 'home')
+        for rater, rated, s in reviews:
+            sim.review(rater, rated, SPORT, s, 5)
+        if not confirm_first:
+            sim.confirm(SPORT, 5, parts, 'home')
+        return sim.get('H0', SPORT)
+    a, b = play(True), play(False)
+    for k in ('rating', 'peer', 'elo', 'rating_count', 'total_matches'):
+        expect(a[k] == b[k], f"order changed {k}: {a[k]} vs {b[k]}")
+
+
+@test
 def combined_all_reviews_skipped_pure_elo(expect):
     """Players can skip reviews entirely: with zero reviews received the
     rating IS the elo, exactly, match after match — the unused 2.0 peer
