@@ -19,27 +19,43 @@ Both sub-ratings start at **2.0**. Players earn their rating — there is no pla
 ### When it updates
 After every match, players rate their opponents (1–10). Each score submitted to `match_ratings` triggers the peer update for the rated player.
 
-### Bias correction
+### Bias correction (with capped upward boost)
 Friends tend to rate each other generously. To counteract this, each incoming score is adjusted by how generous that rater has historically been:
 
 ```
-rater_avg     = average of all scores this rater has ever given (excluding current)
-adjusted_score = CLAMP(score − (rater_avg − 5.0), 1.0, 10.0)
+rater_avg  = average of all scores this rater has ever given (excluding current)
+correction = 5.0 − rater_avg          (+ boosts harsh raters, − suppresses generous ones)
+correction = LEAST(correction, boost_cap)   -- cap ONLY the upward boost (boost_cap = 1.0)
+adjusted_score = CLAMP(score + correction, 1.0, 10.0)
 ```
 
-**Example:** A rater whose lifetime average is 8.0 gives a score of 8.0.  
-`adjusted = 8.0 − (8.0 − 5.0) = 5.0` → treated as average, not great.  
-If the rater has never given a score before, no correction is applied.
+**Example (generous rater):** lifetime average 8.0, gives 8.0 →
+`correction = 5 − 8 = −3` → `adjusted = 8 − 3 = 5.0` → treated as average. Downward suppression is uncapped.
+
+**Why the cap:** without it, a rater could *lowball their own history* (rate everyone harshly), then have their high scores **amplified** — e.g. a rater averaging 4.0 giving a 9 would become `9 + 1 = 10`. The cap limits any upward boost to `+boost_cap`, closing the "lowball then inflate" exploit. If the rater has never given a score before, no correction is applied.
+
+### Rater credibility weight
+A rater who only ever rates one person (a sock-puppet) should barely move that person's rating. The EMA learning rate is scaled by how many **distinct players** the rater has rated:
+
+```
+distinct      = number of distinct players this rater has rated (excluding current)
+cred          = CLAMP(distinct / cred_full, cred_floor, 1.0)   -- cred_full = 4, cred_floor = 0.25
+effective_α   = 0.18 × cred
+```
+
+A single-target rater sits at `cred_floor` (0.25 → effective α ≈ 0.045, ~4× slower); full influence is reached after rating `cred_full` (4) distinct people. This blunts sybil/collusion attacks at the cost of slightly slower convergence for genuinely new raters.
 
 ### Exponential Moving Average (EMA)
-Instead of a simple mean (which is permanently skewed by early friend ratings), the peer rating uses an EMA with α = 0.18 (≈ 10-rating window):
+Instead of a simple mean (which is permanently skewed by early friend ratings), the peer rating uses an EMA whose base rate is α = 0.18 (≈ 10-rating window), scaled by rater credibility:
 
 ```
-peer_new = 0.82 × peer_old + 0.18 × adjusted_score
+peer_new = (1 − effective_α) × peer_old + effective_α × adjusted_score
 peer_new = CLAMP(peer_new, 1.0, 10.0)
 ```
 
-With α = 0.18, a burst of 5 perfect friend scores in one match shifts `peer_rating` by at most ~0.9 points, and that effect decays within ~10 subsequent unbiased reviews.
+With full-credibility α = 0.18, a burst of 5 perfect friend scores in one match shifts `peer_rating` by at most ~0.9 points, and that effect decays within ~10 subsequent unbiased reviews. A low-credibility rater shifts it far less.
+
+**Tunable constants** (top of `update_player_rating`): `alpha`, `boost_cap`, `cred_full`, `cred_floor`.
 
 ---
 
