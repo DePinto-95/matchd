@@ -364,6 +364,28 @@ def combined_weight_anchors(expect):
 
 
 @test
+def combined_all_reviews_skipped_pure_elo(expect):
+    """Players can skip reviews entirely: with zero reviews received the
+    rating IS the elo, exactly, match after match — the unused 2.0 peer
+    default never bleeds in. The first review that does arrive moves the
+    weight to exactly 0.2 review / 0.8 elo."""
+    sim = Sim()
+    H, A, parts = parts5()
+    for w in ['home', 'home', 'away', 'draw', 'home']:
+        sim.confirm(SPORT, 5, parts, w)
+        for p in H + A:
+            r = sim.get(p, SPORT)
+            expect(r['rating'] == r['elo'],
+                   f"{p} rating {r['rating']} != elo {r['elo']} with 0 reviews")
+            expect(r['peer'] == BASE, f"{p} peer changed without any review")
+    sim.review('A0', 'H0', SPORT, 9, 5)          # first review ever for H0
+    r = sim.get('H0', SPORT)
+    want = 0.8 * r['elo'] + 0.2 * r['peer']
+    expect(abs(r['rating'] - want) < 1e-12,
+           f"after 1st review rating {r['rating']} != 0.8*elo + 0.2*peer {want}")
+
+
+@test
 def combined_between_components(expect):
     """Once elo is applied, combined always lies between peer and elo
     (it is a convex blend)."""
