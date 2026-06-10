@@ -141,7 +141,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       .eq('sport', match.sport)
       .single();
 
-    const rating = userRating?.rating ?? 5.0;
+    const rating = userRating?.rating ?? 2.0;
     if (rating < match.min_rating || rating > match.max_rating) {
       toast.error(`This match requires a rating between ${match.min_rating} and ${match.max_rating}. Yours: ${rating.toFixed(1)}`);
       setJoining(false);
@@ -332,12 +332,21 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   };
 
   const handleDisputeResult = async () => {
-    if (!result || !user) return;
+    if (!result || !user || !match) return;
     const h = parseInt(disputeHomeScore), a = parseInt(disputeAwayScore);
     if (isNaN(h) || isNaN(a)) { toast.error('Enter valid scores'); return; }
     const { ok, error } = await disputeResult(result.id, user.id, h, a, deriveWinner(disputeHomeScore, disputeAwayScore));
-    if (!ok) toast.error(error ?? 'Failed to dispute');
-    else { toast.success('Counter-result submitted'); setDisputePanelOpen(false); }
+    if (!ok) { toast.error(error ?? 'Failed to dispute'); return; }
+    await supabase.from('notifications').insert({
+      user_id: result.submitted_by,
+      type: 'result_disputed',
+      title: 'Your result was disputed',
+      body: `Your reported score for "${match.title}" was disputed. Review and respond.`,
+      data: { match_id: match.id, sport: match.sport },
+      read: false,
+    });
+    toast.success('Counter-result submitted');
+    setDisputePanelOpen(false);
   };
 
   const handleAcceptCounter = async () => {

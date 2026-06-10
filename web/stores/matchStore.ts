@@ -15,6 +15,7 @@ interface MatchState {
   setFilters: (filters: Partial<MatchFilters>) => void;
   fetchMatches: () => Promise<void>;
   fetchMatchById: (id: string) => Promise<Match | null>;
+  notifyMatchCompletion: (matchId: string) => Promise<void>;
 }
 
 export const useMatchStore = create<MatchState>((set, get) => ({
@@ -37,13 +38,13 @@ export const useMatchStore = create<MatchState>((set, get) => ({
         *,
         profiles:creator_id(id, username, avatar_url, account_type),
         venues(id, name, city, address),
-        match_participants(id, player_id, team_id, status, profiles(id, username, avatar_url))
+        match_participants(id, player_id, team_id, status, extra_spots, extra_spots_opponent, profiles(id, username, avatar_url))
       `);
 
     if (filters.showPast) {
       query = query.lt('scheduled_at', now).order('scheduled_at', { ascending: false });
     } else {
-      query = query.in('status', ['open', 'full']).gte('scheduled_at', now).order('scheduled_at', { ascending: true });
+      query = query.eq('status', 'open').gte('scheduled_at', now).order('scheduled_at', { ascending: true });
     }
 
     if (filters.sport !== 'all') {
@@ -63,12 +64,16 @@ export const useMatchStore = create<MatchState>((set, get) => ({
         venues(id, name, city, address, logo_url, phone),
         match_teams(id, match_id, side, name),
         match_participants(
-          id, player_id, team_id, status, joined_at, extra_spots, extra_spots_opponent,
+          id, player_id, team_id, status, joined_at, extra_spots, extra_spots_opponent, rating_submitted,
           profiles(id, username, avatar_url, full_name)
         )
       `)
       .eq('id', id)
       .single();
     return data ?? null;
+  },
+
+  notifyMatchCompletion: async (matchId: string) => {
+    await supabase.rpc('notify_match_completion', { p_match_id: matchId });
   },
 }));

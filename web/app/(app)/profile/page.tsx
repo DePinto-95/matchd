@@ -223,91 +223,6 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Levels */}
-      {(() => {
-        const LEVEL_THRESHOLD = 5;
-        const unlocked  = ratings.filter(r => r.total_matches >= LEVEL_THRESHOLD);
-        const inProgress = ratings.filter(r => r.total_matches >= 1 && r.total_matches < LEVEL_THRESHOLD);
-        const hasAny = unlocked.length > 0 || inProgress.length > 0;
-
-        return (
-          <div className="bg-surface border border-border rounded-2xl p-6">
-            <h2 className="font-heading font-bold text-lg text-text mb-4">Levels</h2>
-
-            {!hasAny ? (
-              <p className="text-text-muted text-sm">Play your first match to start building your level.</p>
-            ) : (
-              <div className="flex flex-col gap-3">
-
-                {/* Unlocked levels */}
-                {unlocked.map(r => {
-                  const sport = SPORTS[r.sport];
-                  const color = getRatingColor(r.rating);
-                  return (
-                    <div key={r.id} className="p-4 bg-surface-alt rounded-xl">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl leading-none">{sport?.emoji ?? '🏅'}</span>
-                          <span className="font-medium text-text text-sm">{sport?.label ?? r.sport}</span>
-                        </div>
-                        <span className="font-bold text-lg tabular-nums" style={{ color }}>
-                          {r.rating.toFixed(1)}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-surface rounded-full overflow-hidden mb-1.5">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{ width: `${(r.rating / 10) * 100}%`, backgroundColor: color }}
-                        />
-                      </div>
-                      <p className="text-xs text-text-muted">
-                        {r.total_matches} matches · {r.wins} wins
-                      </p>
-                    </div>
-                  );
-                })}
-
-                {/* In-progress sports */}
-                {inProgress.length > 0 && (
-                  <>
-                    {unlocked.length > 0 && (
-                      <p className="text-xs text-text-muted uppercase tracking-wide mt-1 px-1">In Progress</p>
-                    )}
-                    {inProgress.map(r => {
-                      const sport = SPORTS[r.sport];
-                      const remaining = LEVEL_THRESHOLD - r.total_matches;
-                      return (
-                        <div key={r.id} className="p-4 bg-surface-alt/50 border border-border/50 rounded-xl">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xl leading-none opacity-50">{sport?.emoji ?? '🏅'}</span>
-                              <span className="font-medium text-text-muted text-sm">{sport?.label ?? r.sport}</span>
-                            </div>
-                            <span className="text-xs text-text-muted tabular-nums">
-                              {r.total_matches} / {LEVEL_THRESHOLD}
-                            </span>
-                          </div>
-                          <div className="h-1.5 bg-surface rounded-full overflow-hidden mb-1.5">
-                            <div
-                              className="h-full rounded-full bg-text-muted/30 transition-all"
-                              style={{ width: `${(r.total_matches / LEVEL_THRESHOLD) * 100}%` }}
-                            />
-                          </div>
-                          <p className="text-xs text-text-muted">
-                            {remaining} more {remaining === 1 ? 'match' : 'matches'} to unlock your {sport?.label ?? r.sport} level
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
-
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
       {/* Ratings */}
       {ratings.length > 0 && (
         <div className="bg-surface border border-border rounded-2xl p-6">
@@ -315,22 +230,34 @@ export default function ProfilePage() {
           <div className="flex flex-col gap-4">
             {ratings.map(r => {
               const sport = SPORTS[r.sport];
+              const unlocked = r.total_matches >= 5;
               const color = getRatingColor(r.rating);
+              const remaining = 5 - r.total_matches;
               return (
                 <div key={r.id} className="flex items-center gap-3">
-                  <span className="text-xl">{sport?.emoji ?? '🏅'}</span>
+                  <span className={`text-xl${unlocked ? '' : ' opacity-40'}`}>{sport?.emoji ?? '🏅'}</span>
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-text">{sport?.label ?? r.sport}</span>
-                      <span className="text-sm font-bold" style={{ color }}>{r.rating.toFixed(1)}</span>
+                      <span className={`text-sm font-medium${unlocked ? ' text-text' : ' text-text-muted'}`}>
+                        {sport?.label ?? r.sport}
+                      </span>
+                      {unlocked
+                        ? <span className="text-sm font-bold" style={{ color }}>{r.rating.toFixed(1)}</span>
+                        : <span className="text-xs text-text-muted">{r.total_matches} / 5</span>
+                      }
                     </div>
                     <div className="h-1.5 bg-surface-alt rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${(r.rating / 10) * 100}%`, backgroundColor: color }}
-                      />
+                      {unlocked
+                        ? <div className="h-full rounded-full transition-all" style={{ width: `${(r.rating / 10) * 100}%`, backgroundColor: color }} />
+                        : <div className="h-full rounded-full bg-text-muted/30 transition-all" style={{ width: `${(r.total_matches / 5) * 100}%` }} />
+                      }
                     </div>
-                    <p className="text-xs text-text-muted mt-0.5">{r.total_matches} matches · {r.wins} wins</p>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      {unlocked
+                        ? `${r.total_matches} matches · ${r.wins} wins`
+                        : `${remaining} more ${remaining === 1 ? 'match' : 'matches'} to go`
+                      }
+                    </p>
                   </div>
                 </div>
               );

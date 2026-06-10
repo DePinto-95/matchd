@@ -25,7 +25,13 @@ function getSportColor(sport: string): string {
 
 export function MatchCard({ match }: MatchCardProps) {
   const sport = SPORTS[match.sport];
-  const spotsLeft = match.max_players - match.current_players;
+  const actualPlayers = match.match_participants
+    ? match.match_participants.reduce(
+        (sum, p) => sum + 1 + (p.extra_spots ?? 0) + (p.extra_spots_opponent ?? 0),
+        0
+      )
+    : match.current_players;
+  const spotsLeft = match.max_players - actualPlayers;
   const isFull = match.status === 'full';
   const color = getSportColor(match.sport);
 
@@ -76,7 +82,7 @@ export function MatchCard({ match }: MatchCardProps) {
           </div>
           <div className="flex items-center gap-1.5 text-text-muted text-xs">
             <Users className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>{match.current_players}/{match.max_players} players</span>
+            <span>{actualPlayers}/{match.max_players} players</span>
           </div>
         </div>
 
