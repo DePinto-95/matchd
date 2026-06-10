@@ -2,7 +2,9 @@
 Combined Elo + review-rating test suite, focused on 5v5.
 
 Builds on the trigger-faithful simulator in rating_sim.py (same folder),
-which mirrors the deployed SQL in rating_hardening.sql / elo_trigger_fix.sql.
+which mirrors the deployed SQL in rating_hardening.sql / elo_trigger_fix.sql
+as amended by rating_weight_by_reviews.sql (blend weight from reviews
+received instead of team size).
 Every case here is a hard assertion: the run ends with a PASS/FAIL table
 and a non-zero exit code if anything fails, so you can re-run it yourself
 any time:
@@ -26,11 +28,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from rating_sim import (Sim, ALPHA, BOOST_CAP, CRED_FLOOR, ELO_DIV, BASE,
+                        W_PEER_CAP, w_peer_for,
                         get_review_assignment, _make_match)
 
 SPORT = 'football'
-K5 = 0.8 / math.sqrt(5)                    # 5v5 K-factor      ≈ 0.3578
-W5 = 0.8 / (1.0 + 0.5 * math.log(5))       # 5v5 elo weight    ≈ 0.4433
+K5 = 0.8 / math.sqrt(5)                    # 5v5 K-factor ≈ 0.3578
 
 TESTS = []
 FINDINGS = []   # informational observations, not failures
@@ -327,18 +329,38 @@ def review_sockpuppet_bounded(expect):
 
 @test
 def combined_blend_exact(expect):
-    """After a confirmed result, rating == w_elo*elo + (1-w_elo)*peer with
-    w_elo(5v5) = 0.8/(1+0.5*ln 5) ≈ 0.4433."""
+    """After a confirmed result, rating == (1-w)*elo + w*peer where
+    w = min(0.6, n/(n+4)) and n = reviews RECEIVED in that sport."""
     sim = Sim()
     H, A, parts = parts5()
     seed(sim, H, 5.0, peer=3.0)
     seed(sim, A, 5.0, peer=7.0)
+    counts = {'H0': 0, 'H1': 1, 'H2': 4, 'H3': 6, 'H4': 50,
+              'A0': 0, 'A1': 1, 'A2': 4, 'A3': 6, 'A4': 50}
+    for p, n in counts.items():
+        sim.row(p, SPORT)['rating_count'] = n
     sim.confirm(SPORT, 5, parts, 'home')
-    for p in ['H0', 'A0']:
+    for p, n in counts.items():
         r = sim.get(p, SPORT)
-        want = W5 * r['elo'] + (1 - W5) * r['peer']
+        w = w_peer_for(n)
+        want = (1 - w) * r['elo'] + w * r['peer']
         expect(abs(r['rating'] - want) < 1e-12,
-               f"{p} combined {r['rating']} != blend {want}")
+               f"{p} (n={n}) combined {r['rating']} != blend {want}")
+
+
+@test
+def combined_weight_anchors(expect):
+    """The review-count weight hits the agreed anchors: 0 reviews -> all
+    Elo; 1 review (a 1v1) -> 0.8 elo / 0.2 review; 4 reviews (one full
+    5v5) -> 50/50; capped at 0.6 review / 0.4 elo from 6 reviews on."""
+    expect(w_peer_for(0) == 0.0, "0 reviews must mean pure Elo")
+    expect(abs(w_peer_for(1) - 0.2) < 1e-12, f"1 review -> {w_peer_for(1)}, want 0.2")
+    expect(abs(w_peer_for(4) - 0.5) < 1e-12, f"4 reviews -> {w_peer_for(4)}, want 0.5")
+    expect(w_peer_for(6) == W_PEER_CAP, f"6 reviews -> {w_peer_for(6)}, want cap")
+    expect(w_peer_for(1000) == W_PEER_CAP, "weight must never exceed the cap")
+    for n in range(0, 30):
+        expect(w_peer_for(n) <= w_peer_for(n + 1) + 1e-15,
+               f"weight not monotonic at n={n}")
 
 
 @test
@@ -443,21 +465,21 @@ def combined_draws_dont_count_as_wins(expect):
 
 
 @test
-def combined_team_size_weight_quirk(expect):
-    """KNOWN QUIRK (documented, not a failure): w_elo depends on the team
-    size of the LAST event that recomputed the rating. Same elo=7/peer=3
-    gives combined 6.20 after a 1v1 review but 4.80 after a 5v5 review."""
+def combined_weight_independent_of_team_size(expect):
+    """The old quirk is gone: with identical elo/peer/review-count state,
+    the combined rating is the same whether the last event came from a
+    1v1 or a 5v5 — team size no longer drives the blend."""
     sim = Sim()
     sim.row('P', SPORT).update(elo=7.0, peer=3.0, elo_applied=True)
-    sim.review('Z', 'P', SPORT, 3, 1)
+    sim.review('Z1', 'P', SPORT, 3, 1)          # review tied to a 1v1
     r1 = sim.get('P', SPORT)['rating']
-    sim.row('P', SPORT).update(peer=3.0)
-    sim.review('Z', 'P', SPORT, 3, 5)
+    sim.row('P', SPORT).update(peer=3.0, rating_count=0)
+    sim.review('Z2', 'P', SPORT, 3, 5)          # identical review, 5v5
     r5 = sim.get('P', SPORT)['rating']
-    expect(abs(r1 - r5) > 0.5, "quirk vanished — team-size weight now stable? "
-                               "update this test if intentional")
-    FINDINGS.append(f"team-size quirk: same elo/peer -> combined {r1:.3f} (1v1) "
-                    f"vs {r5:.3f} (5v5); displayed rating depends on last match size")
+    expect(abs(r1 - r5) < 1e-12,
+           f"combined differs by team size: {r1:.3f} (1v1) vs {r5:.3f} (5v5)")
+    FINDINGS.append(f"team-size independence: identical state -> combined "
+                    f"{r1:.3f} from a 1v1 and {r5:.3f} from a 5v5")
 
 
 @test

@@ -7,7 +7,8 @@ How to verify the Elo + review-rating system (including 5v5) yourself.
 | File | What it is |
 |---|---|
 | `rating_sim.py` | Trigger-faithful simulator: ports `update_player_rating` (reviews) and `update_elo_rating` (Elo) plus the review-assignment algorithm. Prints exploratory scenarios. |
-| `rating_tests_5v5.py` | **Assertion-based test suite** (31 cases): Elo mechanics, review hardening, combined rating, full 5v5 season pipeline. Exits non-zero on any failure. |
+| `rating_tests_5v5.py` | **Assertion-based test suite** (32 cases): Elo mechanics, review hardening, combined rating, full 5v5 season pipeline. Exits non-zero on any failure. |
+| `rating_weight_by_reviews.sql` | Latest migration: the combined-rating blend weight comes from **reviews received** (see below), superseding the team-size weight in `rating_hardening.sql` / `elo_trigger_fix.sql`. |
 | `test_combined.sql` | Runs the same sequence as Scenario 1 of the simulator **against the live Supabase triggers** (rolled back at the end). Use it to confirm the deployed SQL matches the simulator. |
 
 ## Run
@@ -19,8 +20,8 @@ python web/supabase/rating_sim.py         # exploratory scenarios with printed n
 
 To check the **live database** is in sync: run `test_combined.sql` in the
 Supabase SQL Editor and compare its output with the `=== Scenario 1 ===`
-block of `rating_sim.py`. If they differ, re-run `rating_hardening.sql`
-and `elo_trigger_fix.sql`.
+block of `rating_sim.py`. If they differ, re-run `rating_hardening.sql`,
+`elo_trigger_fix.sql` and `rating_weight_by_reviews.sql`.
 
 > If you change the SQL triggers, update `rating_sim.py` to match, then
 > re-run the suite. A failing test means either the SQL has a bug or the
@@ -40,11 +41,22 @@ harsh raters boosted at most +1; credibility ramps with *distinct* ratees
 and is monotonic in score; a rater who always gives the same score is
 normalized to neutral 5; a sock-puppet spamming 9s stays bounded.
 
-**C. Combined rating** — `rating = w_elo·elo + (1−w_elo)·peer` with
-w_elo(5v5) ≈ 0.443, always between the two components; reviews alone never
-touch elo (`rating == peer` until the first confirmed result); abandoned
-matches count toward the 5-match display gate without changing ratings;
-draws don't count as wins; 200-match stress keeps everything in [1,10].
+**C. Combined rating** — `rating = (1−w)·elo + w·peer` where
+`w = min(0.6, n/(n+4))` and `n` = reviews **received** in that sport:
+
+| Reviews received | Review weight | Elo weight |
+|---|---|---|
+| 0 | 0.00 | 1.00 |
+| 1 (one 1v1) | 0.20 | 0.80 |
+| 4 (one 5v5) | 0.50 | 0.50 |
+| 6+ | 0.60 (cap) | 0.40 |
+
+The combined rating always lies between the two components; reviews alone
+never touch elo (`rating == peer` until the first confirmed result);
+abandoned matches count toward the 5-match display gate without changing
+ratings; draws don't count as wins; 200-match stress keeps everything in
+[1,10]; and identical state produces the identical rating regardless of
+the team size of the last match (the old team-size weight quirk is gone).
 
 **D. Pipeline** — review assignment never self-assigns or duplicates
 (1v1–8v8 and unbalanced 5v4); a 20-match 5v5 season where the seeded
@@ -62,10 +74,7 @@ hidden quality.
    rotating review assignment encourages.
 3. **Clamps break zero-sum at the edges.** A team stuck at elo 1.0 loses
    nothing more, while the winner still gains.
-4. **Team-size weight quirk.** `w_elo` is computed from the team size of the
-   *last* match that recomputed the rating. A player with elo 7 / peer 3
-   shows combined 6.20 if last touched by a 1v1 but 4.80 if by a 5v5
-   (1v1: w_elo = 0.8; 5v5: ≈ 0.443). If players mix formats often, their
-   displayed rating can jump without any new information. Fix would be to
-   store a per-player blended weight (e.g. average team size of their
-   matches) instead of using the current match's size.
+4. ~~Team-size weight quirk~~ — **fixed** by `rating_weight_by_reviews.sql`:
+   the blend weight now comes from the player's own review count, which
+   only grows, so the displayed rating no longer jumps when a player
+   mixes match formats.

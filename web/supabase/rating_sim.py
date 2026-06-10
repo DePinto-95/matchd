@@ -6,8 +6,9 @@ Rating-system simulator — faithful port of the two Postgres triggers:
 Purpose: run many scenarios (1v1 and 5v5, Elo + reviews together), check
 mathematical invariants, and surface anything wrong with the calculation.
 
-This MIRRORS the SQL in rating_hardening.sql / elo_trigger_fix.sql. If you
-change the SQL, change this too (or trust the SQL harness test_combined.sql).
+This MIRRORS the SQL in rating_weight_by_reviews.sql (which supersedes the
+blend weight in rating_hardening.sql / elo_trigger_fix.sql). If you change
+the SQL, change this too (or trust the SQL harness test_combined.sql).
 
 Run:  python web/supabase/rating_sim.py
 """
@@ -21,6 +22,13 @@ CRED_FULL  = 4
 CRED_FLOOR = 0.25
 ELO_DIV    = 3.0          # divisor in the expected-score formula
 BASE       = 2.0          # starting rating
+W_PEER_CAP = 0.6          # max review weight in the combined blend
+W_HALF     = 4.0          # reviews received for a 50/50 blend
+
+
+def w_peer_for(count):
+    """Review-side blend weight from reviews RECEIVED (per sport)."""
+    return min(W_PEER_CAP, count / (count + W_HALF))
 
 
 def clamp(x, lo=1.0, hi=10.0):
@@ -43,7 +51,9 @@ class Sim:
         return self.pr[key]
 
     # ── update_player_rating (peer trigger), hardened ──
-    def review(self, rater, rated, sport, score, team_size):
+    # team_size is accepted for call-site compatibility but no longer
+    # affects the blend — the weight comes from reviews received.
+    def review(self, rater, rated, sport, score, team_size=None):
         r = self.row(rated, sport)
         peer_old, elo_old, elo_applied = r['peer'], r['elo'], r['elo_applied']
 
@@ -67,8 +77,8 @@ class Sim:
         peer_new = clamp((1.0 - eff_alpha) * peer_old + eff_alpha * adj)
 
         if elo_applied:
-            w_elo = 0.8 / (1.0 + 0.5 * math.log(max(team_size, 1)))
-            combined = clamp(w_elo * elo_old + (1.0 - w_elo) * peer_new)
+            w_peer = w_peer_for(r['rating_count'] + 1)   # incl. this review
+            combined = clamp((1.0 - w_peer) * elo_old + w_peer * peer_new)
         else:
             combined = peer_new
 
@@ -82,8 +92,6 @@ class Sim:
     def confirm(self, sport, team_size, participants, winner):
         # participants: list of (player, side)  side in {'home','away'}
         K = 0.8 / math.sqrt(max(team_size, 1))
-        w_elo = 0.8 / (1.0 + 0.5 * math.log(max(team_size, 1)))
-        w_peer = 1.0 - w_elo
 
         home = [p for p, s in participants if s == 'home']
         away = [p for p, s in participants if s == 'away']
@@ -104,7 +112,8 @@ class Sim:
                 E = E_away
                 S = 1.0 if winner == 'away' else (0.0 if winner == 'home' else 0.5)
             elo_new = clamp(elo_old + K * (S - E))
-            combined = clamp(w_elo * elo_new + w_peer * peer_old)
+            w_peer = w_peer_for(r['rating_count'])       # per-player weight
+            combined = clamp((1.0 - w_peer) * elo_new + w_peer * peer_old)
             deltas.append(elo_new - elo_old)
             r['elo'] = elo_new
             r['rating'] = combined
@@ -216,22 +225,27 @@ def sc_5v5_many():
     all_in_range(sim)
 
 
-def sc_weight_instability():
-    print("\n=== Scenario 4: same elo/peer, different last match-size => different rating ===")
+def sc_weight_stability():
+    print("\n=== Scenario 4: blend weight from reviews RECEIVED, not team size ===")
     sim = Sim()
     sport = 'football'
     # Force a player to elo=7, peer=3 with elo applied
     sim.row('P', sport).update(elo=7.0, peer=3.0, elo_applied=True, rating=0)
     # A review in a 1v1 (team_size 1)
-    sim.review('Z', 'P', sport, 3, 1)   # Z gives a 3, peer stays ~3
+    sim.review('Z1', 'P', sport, 3, 1)   # Z1 gives a 3, peer stays ~3
     r1 = sim.get('P', sport)['rating']
-    # reset peer back to 3 exactly, then a review in a 5v5
-    sim.row('P', sport).update(peer=3.0)
-    sim.review('Z', 'P', sport, 3, 5)
+    # reset to the identical state, then the same review in a 5v5
+    # (fresh rater so the rater-bias correction is identical too)
+    sim.row('P', sport).update(peer=3.0, rating_count=0)
+    sim.review('Z2', 'P', sport, 3, 5)
     r5 = sim.get('P', sport)['rating']
     print(f"  combined after 1v1 review: {r1:.3f}")
     print(f"  combined after 5v5 review: {r5:.3f}")
-    print(f"  same elo=7, peer~3, but rating differs by {abs(r1 - r5):.3f} purely from team size")
+    print(f"  identical state => identical rating (diff {abs(r1 - r5):.1e}); "
+          f"team size no longer matters")
+    print("  weight ramp: " + "  ".join(
+        f"n={n}->w_peer={w_peer_for(n):.2f}" for n in [0, 1, 2, 4, 6, 10]))
+    check(abs(r1 - r5) < 1e-12, "blend weight still depends on team size")
 
 
 def sc_total_matches_gate():
@@ -401,10 +415,13 @@ def sc_review_random():
 
 
 if __name__ == '__main__':
+    import sys
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sc_1v1_combined()
     sc_5v5_single()
     sc_5v5_many()
-    sc_weight_instability()
+    sc_weight_stability()
     sc_total_matches_gate()
     sc_sockpuppet_with_elo()
     sc_review_balance()
