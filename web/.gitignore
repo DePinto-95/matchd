@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local rating test harnesses (rolled-back, contain real account UUIDs)
+supabase/test_*.sql
