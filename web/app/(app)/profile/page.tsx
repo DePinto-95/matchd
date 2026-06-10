@@ -25,7 +25,7 @@ function DefaultPersonAvatar() {
 export default function ProfilePage() {
   const { user, profile: authProfile, fetchProfile } = useAuthStore();
   const { friends, fetchFriends } = useFriendStore();
-  const { profile, ratings, matchHistory, loading, fetchProfile: fetchDetailedProfile } = useProfile();
+  const { profile, ratings, matchHistory, playedCounts, loading, fetchProfile: fetchDetailedProfile } = useProfile();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -230,9 +230,10 @@ export default function ProfilePage() {
           <div className="flex flex-col gap-4">
             {ratings.map(r => {
               const sport = SPORTS[r.sport];
-              const unlocked = r.total_matches >= 5;
+              const played = playedCounts[r.sport] ?? 0;
+              const unlocked = played >= 5;
               const color = getRatingColor(r.rating);
-              const remaining = 5 - r.total_matches;
+              const remaining = 5 - played;
               return (
                 <div key={r.id} className="flex items-center gap-3">
                   <span className={`text-xl${unlocked ? '' : ' opacity-40'}`}>{sport?.emoji ?? '🏅'}</span>
@@ -243,18 +244,18 @@ export default function ProfilePage() {
                       </span>
                       {unlocked
                         ? <span className="text-sm font-bold" style={{ color }}>{r.rating.toFixed(1)}</span>
-                        : <span className="text-xs text-text-muted">{r.total_matches} / 5</span>
+                        : <span className="text-xs text-text-muted">{played} / 5</span>
                       }
                     </div>
                     <div className="h-1.5 bg-surface-alt rounded-full overflow-hidden">
                       {unlocked
                         ? <div className="h-full rounded-full transition-all" style={{ width: `${(r.rating / 10) * 100}%`, backgroundColor: color }} />
-                        : <div className="h-full rounded-full bg-text-muted/30 transition-all" style={{ width: `${(r.total_matches / 5) * 100}%` }} />
+                        : <div className="h-full rounded-full bg-text-muted/30 transition-all" style={{ width: `${(played / 5) * 100}%` }} />
                       }
                     </div>
                     <p className="text-xs text-text-muted mt-0.5">
                       {unlocked
-                        ? `${r.total_matches} matches · ${r.wins} wins`
+                        ? `${played} matches · ${r.wins} confirmed wins`
                         : `${remaining} more ${remaining === 1 ? 'match' : 'matches'} to go`
                       }
                     </p>

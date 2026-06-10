@@ -26,7 +26,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
   const router = useRouter();
   const { profile: myProfile } = useAuthStore();
   const { getRelation, fetchFriends, sendRequest, cancelRequest, acceptRequest, declineRequest, removeFriend, reportUser } = useFriendStore();
-  const { profile, ratings, matchHistory, loading, fetchProfile } = useProfile();
+  const { profile, ratings, matchHistory, playedCounts, loading, fetchProfile } = useProfile();
 
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
@@ -161,19 +161,35 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
           <div className="flex flex-col gap-4">
             {ratings.map((r) => {
               const sport = SPORTS[r.sport];
+              const played = playedCounts[r.sport] ?? 0;
+              const unlocked = played >= 5;
               const color = getRatingColor(r.rating);
+              const remaining = 5 - played;
               return (
                 <div key={r.id} className="flex items-center gap-3">
-                  <span className="text-xl">{sport?.emoji ?? '🏅'}</span>
+                  <span className={`text-xl${unlocked ? '' : ' opacity-40'}`}>{sport?.emoji ?? '🏅'}</span>
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-text">{sport?.label ?? r.sport}</span>
-                      <span className="text-sm font-bold" style={{ color }}>{r.rating.toFixed(1)}</span>
+                      <span className={`text-sm font-medium${unlocked ? ' text-text' : ' text-text-muted'}`}>
+                        {sport?.label ?? r.sport}
+                      </span>
+                      {unlocked
+                        ? <span className="text-sm font-bold" style={{ color }}>{r.rating.toFixed(1)}</span>
+                        : <span className="text-xs text-text-muted">{played} / 5</span>
+                      }
                     </div>
                     <div className="h-1.5 bg-surface-alt rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${(r.rating / 10) * 100}%`, backgroundColor: color }} />
+                      {unlocked
+                        ? <div className="h-full rounded-full" style={{ width: `${(r.rating / 10) * 100}%`, backgroundColor: color }} />
+                        : <div className="h-full rounded-full bg-text-muted/30" style={{ width: `${(played / 5) * 100}%` }} />
+                      }
                     </div>
-                    <p className="text-xs text-text-muted mt-0.5">{r.total_matches} matches · {r.wins} wins</p>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      {unlocked
+                        ? `${played} matches · ${r.wins} confirmed wins`
+                        : `${remaining} more ${remaining === 1 ? 'match' : 'matches'} to go`
+                      }
+                    </p>
                   </div>
                 </div>
               );
