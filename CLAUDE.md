@@ -129,10 +129,26 @@ All sport metadata lives in `constants/sports.ts`. Reference `SPORTS[sport]` eve
 
 ## Git & GitHub Workflow
 
-Repo: `DePinto-95/matchd`. **Commit and push after every meaningful unit of work.**
+Repo: `DePinto-95/matchd`.
 
-- Use prefixes: `feat:`, `fix:`, `refactor:`, `chore:`, `style:`
-- Never commit `.env.local` or any file containing secrets
+**Commit locally and push to GitHub after every meaningful unit of work — do not wait to be asked.** The goal is that GitHub always holds an up-to-date saved version of the project, so no work is ever lost and we can always revert to a known-good state. As you complete each coherent change, commit it with a clean message and push it the same session.
+
+Workflow for each unit of work:
+1. Stage only the files for that change — `git add web/<changed files>` (avoid `git add .`).
+2. Commit locally with a clean, descriptive message (see format below).
+3. Push to GitHub right away: `git push origin main`.
+
+Keep commits focused: one logical change per commit so history stays easy to read and revert. Prefer several small, clean commits over one large mixed one.
+
+Clean commit message format:
+- Subject line: `<prefix>: <imperative summary>` (≤ ~72 chars), using a prefix below.
+- Optional body: a blank line, then *why* the change was made and any notable details.
+- Prefixes: `feat:`, `fix:`, `refactor:`, `chore:`, `style:`, `docs:`, `test:`.
+
+Rules:
+- Never commit `.env.local` or any file containing secrets.
+- Never use `--no-verify` or skip hooks unless explicitly asked.
+- If a push fails, surface it — don't leave work committed only locally without saying so.
 
 ```bash
 git add web/<changed files>
