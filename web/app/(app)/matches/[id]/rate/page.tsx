@@ -6,6 +6,7 @@ import { ChevronLeft, Star, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useMatchStore } from '@/stores/matchStore';
 import { useRatings } from '@/hooks/useRatings';
+import { getReviewAssignment } from '@/lib/reviewAssignment';
 import { Match, MatchParticipant } from '@/types';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -21,8 +22,7 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
   const [scores, setScores] = useState<Record<string, number>>({});
   const [rated, setRated] = useState<Set<string>>(new Set());
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
-  const [initialVisibleIds, setInitialVisibleIds] = useState<Set<string>>(new Set());
-  const [showAll, setShowAll] = useState(false);
+  const [showExtra, setShowExtra] = useState(false);
   const [submittingDone, setSubmittingDone] = useState(false);
 
   const loadMatch = useCallback(async () => {
@@ -36,11 +36,25 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
 
   const myRow = match?.match_participants?.find((p) => p.player_id === user?.id);
 
-  const allOpponents = useMemo(() => {
-    return (match?.match_participants ?? []).filter(
-      (p) => p.player_id !== user?.id && p.status === 'confirmed'
+  // Balanced assignment: half teammates, half opponents, capped per side.
+  const assignment = useMemo(() => {
+    if (!match || !user) return null;
+    return getReviewAssignment(
+      match.match_participants ?? [],
+      user.id,
+      myRow?.team_id,
+      match.id,
     );
-  }, [match, user?.id]);
+  }, [match, user, myRow?.team_id]);
+
+  const assignedAll = useMemo<MatchParticipant[]>(
+    () => assignment ? [...assignment.assignedTeammates, ...assignment.assignedOpponents] : [],
+    [assignment],
+  );
+  const extraAll = useMemo<MatchParticipant[]>(
+    () => assignment ? [...assignment.extraTeammates, ...assignment.extraOpponents] : [],
+    [assignment],
+  );
 
   // Resume: load any ratings this user already submitted for this match
   useEffect(() => {
@@ -61,28 +75,9 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
       });
   }, [user?.id, id]);
 
-  // Fix the initial visible set once opponents are known
-  useEffect(() => {
-    if (allOpponents.length > 0 && initialVisibleIds.size === 0) {
-      const count = allOpponents.length <= 6 ? allOpponents.length : 4;
-      setInitialVisibleIds(new Set(allOpponents.slice(0, count).map((p) => p.player_id)));
-    }
-  }, [allOpponents]);
-
-  const visiblePlayers = useMemo(() => {
-    const base = showAll
-      ? allOpponents
-      : allOpponents.filter((p) => initialVisibleIds.has(p.player_id));
-    return base.filter((p) => !skipped.has(p.player_id));
-  }, [allOpponents, initialVisibleIds, skipped, showAll]);
-
-  const hiddenCount = allOpponents.filter(
-    (p) => !initialVisibleIds.has(p.player_id) && !skipped.has(p.player_id)
-  ).length;
-
   const canDone =
-    initialVisibleIds.size > 0 &&
-    [...initialVisibleIds].every((pid) => rated.has(pid) || skipped.has(pid));
+    assignedAll.length === 0 ||
+    assignedAll.every((p) => rated.has(p.player_id) || skipped.has(p.player_id));
 
   const handleRate = async (p: MatchParticipant) => {
     if (!user) return;
@@ -94,6 +89,7 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
     const ok = await submitRating(user.id, p.player_id, score);
     if (ok) {
       setRated((prev) => new Set([...prev, p.player_id]));
+      setSkipped((prev) => { const n = new Set(prev); n.delete(p.player_id); return n; });
     } else {
       toast.error('Failed to submit rating');
     }
@@ -129,12 +125,69 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
         <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
           <CheckCircle className="w-12 h-12 text-success" />
           <h2 className="font-heading font-bold text-xl text-text">Ratings submitted</h2>
-          <p className="text-text-muted text-sm">You've already rated your players for this match.</p>
+          <p className="text-text-muted text-sm">You&apos;ve already rated your players for this match.</p>
           <Button onClick={() => router.push('/')}>Back to home</Button>
         </div>
       </div>
     );
   }
+
+  const renderPlayerRow = (p: MatchParticipant, showSkip: boolean) => {
+    const isRated = rated.has(p.player_id);
+    return (
+      <div
+        key={p.id}
+        className={`border rounded-xl p-4 flex items-center gap-4 transition-colors ${
+          isRated ? 'bg-success/5 border-success/30' : 'bg-surface border-border'
+        }`}
+      >
+        <Avatar src={p.profiles?.avatar_url} name={p.profiles?.username} size="md" />
+        <div className="flex-1">
+          <p className="font-medium text-text">{p.profiles?.username ?? 'Player'}</p>
+          {isRated && <p className="text-xs text-success mt-0.5">Rated ✓</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="1" max="10" step="0.1"
+            placeholder="Score"
+            value={scores[p.player_id] ?? ''}
+            onChange={(e) => setScores((prev) => ({ ...prev, [p.player_id]: parseFloat(e.target.value) }))}
+            className={`w-20 px-3 py-2 rounded-lg bg-surface-alt border text-text text-sm text-center focus:outline-none focus:border-brand ${
+              isRated ? 'border-success/50' : 'border-border'
+            }`}
+          />
+          <Button
+            size="sm"
+            loading={submitting}
+            variant={isRated ? 'secondary' : 'primary'}
+            onClick={() => handleRate(p)}
+          >
+            {isRated ? 'Update' : 'Rate'}
+          </Button>
+          {showSkip && !isRated && (
+            <button
+              onClick={() => setSkipped((prev) => new Set([...prev, p.player_id]))}
+              className="text-xs text-text-muted hover:text-text transition-colors px-2 py-1.5"
+            >
+              Skip
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const section = (label: string, players: MatchParticipant[], showSkip: boolean) =>
+    players.length > 0 && (
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-text-muted uppercase tracking-wide px-1">{label}</p>
+        {players.map((p) => renderPlayerRow(p, showSkip))}
+      </div>
+    );
+
+  const nTeam = assignment?.assignedTeammates.length ?? 0;
+  const nOpp = assignment?.assignedOpponents.length ?? 0;
 
   return (
     <div className="max-w-xl mx-auto flex flex-col gap-6">
@@ -146,68 +199,40 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
       <div>
         <h1 className="font-heading font-bold text-2xl text-text">Rate Players</h1>
         <p className="text-text-muted text-sm mt-1">{match.title}</p>
+        {assignedAll.length > 0 && (
+          <p className="text-text-muted text-xs mt-1">
+            Review {nTeam > 0 ? `${nTeam} teammate${nTeam !== 1 ? 's' : ''}` : ''}
+            {nTeam > 0 && nOpp > 0 ? ' and ' : ''}
+            {nOpp > 0 ? `${nOpp} opponent${nOpp !== 1 ? 's' : ''}` : ''}
+          </p>
+        )}
       </div>
 
-      {allOpponents.length === 0 ? (
+      {assignedAll.length === 0 ? (
         <div className="text-center py-20">
           <Star className="w-10 h-10 text-border mx-auto mb-3" />
           <p className="text-text-muted text-sm">No players to rate</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          {visiblePlayers.map((p) => {
-            const isRated = rated.has(p.player_id);
-            return (
-              <div
-                key={p.id}
-                className={`border rounded-xl p-4 flex items-center gap-4 transition-colors ${
-                  isRated ? 'bg-success/5 border-success/30' : 'bg-surface border-border'
-                }`}
-              >
-                <Avatar src={p.profiles?.avatar_url} name={p.profiles?.username} size="md" />
-                <div className="flex-1">
-                  <p className="font-medium text-text">{p.profiles?.username ?? 'Player'}</p>
-                  {isRated && <p className="text-xs text-success mt-0.5">Rated ✓</p>}
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1" max="10" step="0.1"
-                    placeholder="Score"
-                    value={scores[p.player_id] ?? ''}
-                    onChange={(e) => setScores((prev) => ({ ...prev, [p.player_id]: parseFloat(e.target.value) }))}
-                    className={`w-20 px-3 py-2 rounded-lg bg-surface-alt border text-text text-sm text-center focus:outline-none focus:border-brand ${
-                      isRated ? 'border-success/50' : 'border-border'
-                    }`}
-                  />
-                  <Button
-                    size="sm"
-                    loading={submitting}
-                    variant={isRated ? 'secondary' : 'primary'}
-                    onClick={() => handleRate(p)}
-                  >
-                    {isRated ? 'Update' : 'Rate'}
-                  </Button>
-                  {!isRated && (
-                    <button
-                      onClick={() => setSkipped((prev) => new Set([...prev, p.player_id]))}
-                      className="text-xs text-text-muted hover:text-text transition-colors px-2 py-1.5"
-                    >
-                      Skip
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="flex flex-col gap-6">
+          {section('Your team', assignment!.assignedTeammates, true)}
+          {section('Opponents', assignment!.assignedOpponents, true)}
 
-          {!showAll && hiddenCount > 0 && (
+          {!showExtra && extraAll.length > 0 && (
             <button
-              onClick={() => setShowAll(true)}
+              onClick={() => setShowExtra(true)}
               className="text-sm text-brand hover:text-brand/80 transition-colors text-center py-2"
             >
-              + {hiddenCount} more player{hiddenCount !== 1 ? 's' : ''} to rate
+              + Review more players ({extraAll.length})
             </button>
+          )}
+
+          {showExtra && (
+            <div className="flex flex-col gap-6 border-t border-border pt-6">
+              <p className="text-xs text-text-muted px-1">Optional — review anyone else from the match.</p>
+              {section('More teammates', assignment!.extraTeammates, false)}
+              {section('More opponents', assignment!.extraOpponents, false)}
+            </div>
           )}
 
           {canDone && (
