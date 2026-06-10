@@ -1,0 +1,71 @@
+# Rating System Tests
+
+How to verify the Elo + review-rating system (including 5v5) yourself.
+
+## Files
+
+| File | What it is |
+|---|---|
+| `rating_sim.py` | Trigger-faithful simulator: ports `update_player_rating` (reviews) and `update_elo_rating` (Elo) plus the review-assignment algorithm. Prints exploratory scenarios. |
+| `rating_tests_5v5.py` | **Assertion-based test suite** (31 cases): Elo mechanics, review hardening, combined rating, full 5v5 season pipeline. Exits non-zero on any failure. |
+| `test_combined.sql` | Runs the same sequence as Scenario 1 of the simulator **against the live Supabase triggers** (rolled back at the end). Use it to confirm the deployed SQL matches the simulator. |
+
+## Run
+
+```bash
+python web/supabase/rating_tests_5v5.py   # the test suite (start here)
+python web/supabase/rating_sim.py         # exploratory scenarios with printed numbers
+```
+
+To check the **live database** is in sync: run `test_combined.sql` in the
+Supabase SQL Editor and compare its output with the `=== Scenario 1 ===`
+block of `rating_sim.py`. If they differ, re-run `rating_hardening.sql`
+and `elo_trigger_fix.sql`.
+
+> If you change the SQL triggers, update `rating_sim.py` to match, then
+> re-run the suite. A failing test means either the SQL has a bug or the
+> simulator is out of sync — they must agree.
+
+## What the suite covers
+
+**A. Elo mechanics (5v5)** — equal teams win/draw deltas are exactly ±K/2 / 0;
+underdogs gain more than favorites; zero-sum conservation; identical delta
+for all teammates; floor/ceiling clamps; win > draw > loss monotonicity;
+max swing per match is K = 0.8/√5 ≈ 0.358.
+
+**B. Review hardening** — fresh raters start at the credibility floor
+(eff. learning rate 0.045); generous raters are suppressed (uncapped down),
+harsh raters boosted at most +1; credibility ramps with *distinct* ratees
+(2→0.5, 3→0.75, 4+→1.0), never with volume on one target; EMA converges
+and is monotonic in score; a rater who always gives the same score is
+normalized to neutral 5; a sock-puppet spamming 9s stays bounded.
+
+**C. Combined rating** — `rating = w_elo·elo + (1−w_elo)·peer` with
+w_elo(5v5) ≈ 0.443, always between the two components; reviews alone never
+touch elo (`rating == peer` until the first confirmed result); abandoned
+matches count toward the 5-match display gate without changing ratings;
+draws don't count as wins; 200-match stress keeps everything in [1,10].
+
+**D. Pipeline** — review assignment never self-assigns or duplicates
+(1v1–8v8 and unbalanced 5v4); a 20-match 5v5 season where the seeded
+assignment picks raters (2 teammates + 2 opponents each, everyone gives
+and receives exactly 4) ends with combined ratings ordered by the players'
+hidden quality.
+
+## Known properties (by design, verified by tests — not bugs)
+
+1. **Elo is path-dependent.** 5 wins then 5 losses ends ~0.35 *below*
+   start (losses while highly rated cost more). Zero-sum still holds.
+2. **Constant raters carry no signal.** The bias correction drives a rater
+   who always gives the same score toward a neutral adjusted 5. Stars only
+   separate from teammates when raters give *varied* scores — which the
+   rotating review assignment encourages.
+3. **Clamps break zero-sum at the edges.** A team stuck at elo 1.0 loses
+   nothing more, while the winner still gains.
+4. **Team-size weight quirk.** `w_elo` is computed from the team size of the
+   *last* match that recomputed the rating. A player with elo 7 / peer 3
+   shows combined 6.20 if last touched by a 1v1 but 4.80 if by a 5v5
+   (1v1: w_elo = 0.8; 5v5: ≈ 0.443). If players mix formats often, their
+   displayed rating can jump without any new information. Fix would be to
+   store a per-player blended weight (e.g. average team size of their
+   matches) instead of using the current match's size.
