@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, CheckCheck, Users, Share2, Star, X, Trophy, HelpCircle, Trash2, MailOpen } from 'lucide-react';
+import { Bell, CheckCheck, Users, Share2, Star, X, Trophy, HelpCircle, Trash2, MailOpen, Mail } from 'lucide-react';
 import { SPORTS } from '@/constants/sports';
 import type { SportType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/Button';
 export default function NotificationsPage() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { notifications, unreadCount, loading, fetchNotifications, markAsRead, deleteNotification, markAllAsRead, clearAll, clearRead } = useNotificationStore();
+  const { notifications, unreadCount, loading, fetchNotifications, markAsRead, markAsUnread, deleteNotification, markAllAsRead, clearAll, clearRead } = useNotificationStore();
 
   const readCount = notifications.length - unreadCount;
 
@@ -131,6 +131,16 @@ export default function NotificationsPage() {
                     </div>
                   </div>
                 </button>
+                {n.read && (
+                  <button
+                    onClick={() => markAsUnread(n.id)}
+                    className="absolute top-2 right-8 p-1 rounded-md text-text-muted opacity-0 group-hover:opacity-100 hover:text-text hover:bg-surface-alt transition-all"
+                    aria-label="Mark as unread"
+                    title="Mark as unread"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <button
                   onClick={() => deleteNotification(n.id)}
                   className="absolute top-2 right-2 p-1 rounded-md text-text-muted opacity-0 group-hover:opacity-100 hover:text-text hover:bg-surface-alt transition-all"
