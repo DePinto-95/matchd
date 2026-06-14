@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, CheckCheck, Users, Share2, Star, X, Trophy, HelpCircle } from 'lucide-react';
+import { Bell, CheckCheck, Users, Share2, Star, X, Trophy, HelpCircle, Trash2, MailOpen } from 'lucide-react';
 import { SPORTS } from '@/constants/sports';
 import type { SportType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
@@ -13,7 +13,9 @@ import { Button } from '@/components/ui/Button';
 export default function NotificationsPage() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { notifications, unreadCount, loading, fetchNotifications, markAsRead, deleteNotification, markAllAsRead } = useNotificationStore();
+  const { notifications, unreadCount, loading, fetchNotifications, markAsRead, deleteNotification, markAllAsRead, clearAll, clearRead } = useNotificationStore();
+
+  const readCount = notifications.length - unreadCount;
 
   useEffect(() => {
     if (user?.id) fetchNotifications(user.id);
@@ -28,15 +30,37 @@ export default function NotificationsPage() {
             <p className="text-text-muted text-sm mt-1">{unreadCount} unread</p>
           )}
         </div>
-        {unreadCount > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => user?.id && markAllAsRead(user.id)}
-          >
-            <CheckCheck className="w-4 h-4" />
-            Mark all read
-          </Button>
+        {notifications.length > 0 && (
+          <div className="flex items-center gap-1">
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => user?.id && markAllAsRead(user.id)}
+              >
+                <CheckCheck className="w-4 h-4" />
+                Mark all read
+              </Button>
+            )}
+            {readCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => user?.id && clearRead(user.id)}
+              >
+                <MailOpen className="w-4 h-4" />
+                Clear read
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => user?.id && clearAll(user.id)}
+            >
+              <Trash2 className="w-4 h-4" />
+              Clear all
+            </Button>
+          </div>
         )}
       </div>
 

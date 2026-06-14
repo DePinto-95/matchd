@@ -10,6 +10,8 @@ interface NotificationState {
   markAsRead: (id: string) => Promise<void>;
   deleteNotification: (id: string) => Promise<void>;
   markAllAsRead: (userId: string) => Promise<void>;
+  clearAll: (userId: string) => Promise<void>;
+  clearRead: (userId: string) => Promise<void>;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
@@ -65,6 +67,24 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     set((state) => ({
       notifications: state.notifications.map((n) => ({ ...n, read: true })),
       unreadCount: 0,
+    }));
+  },
+
+  clearAll: async (userId: string) => {
+    const { error } = await supabase.from('notifications').delete().eq('user_id', userId);
+    if (error) return;
+    set({ notifications: [], unreadCount: 0 });
+  },
+
+  clearRead: async (userId: string) => {
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('user_id', userId)
+      .eq('read', true);
+    if (error) return;
+    set((state) => ({
+      notifications: state.notifications.filter((n) => !n.read),
     }));
   },
 }));
