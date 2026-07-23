@@ -62,8 +62,8 @@ export function MatchCard({ match }: MatchCardProps) {
                 <span className="text-xs">Private</span>
               </div>
             )}
-            <Badge variant={isFull ? 'error' : spotsLeft <= 3 ? 'warning' : 'success'}>
-              {isFull ? 'Full' : `${spotsLeft} spots`}
+            <Badge variant={isFull ? 'warning' : 'success'}>
+              {isFull ? 'Full' : `Open · ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left`}
             </Badge>
           </div>
         </div>
