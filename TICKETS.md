@@ -67,6 +67,11 @@ The "⚡ Fill: 1 min test" button and the `1`-minute entry in `DURATIONS` are de
 **Files:** `CLAUDE.md`, `web/supabase/*.sql`
 CLAUDE.md says player ratings default to 5.0/10; every SQL seed (`update_player_rating`, `update_elo_rating`) and the join-gate fallback in the match page use 2.0. Whichever is intended, align the other — the join gate (`min_rating`) behaves very differently for new players depending on this.
 
+### MD-29 · Page navigation felt frozen, prompting manual reloads — ✅ Fixed
+**Files:** `web/components/layout/Navbar.tsx`, `web/hooks/useRealtime.ts`, `web/app/(app)/loading.tsx` (new), `web/components/ui/PageLoading.tsx` (new)
+Two compounding issues made in-app navigation feel broken: (1) every page under `app/(app)/` is a client component with no `loading.tsx`/pending-nav indicator anywhere, so clicks gave zero visual feedback while `proxy.ts`'s `getUser()` network round-trip and the route's RSC payload resolved — looked frozen, prompting reloads; (2) Navbar passed a new inline callback to `useNotificationRealtime` on every render, and Navbar re-renders on every route change (`usePathname`), so the notifications Realtime channel was torn down and resubscribed on every single navigation.
+**Fix:** added a shared `<PageLoading />` spinner and a `loading.tsx` on the `(app)` route group (covers all nested routes since none define a more specific one); memoized the Navbar's realtime callback with `useCallback` so the channel subscribes once.
+
 ---
 
 ## P2 — Missing features
