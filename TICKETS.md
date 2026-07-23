@@ -17,10 +17,10 @@ The leave flow calls `adjust_match_player_count` with `-extra_spots` only. If th
 `handleJoin` counted team occupancy as the number of participant *rows* (`currentOnTeam`), and the join panel's `homeCount`/`awayCount`/`homeOpen`/`awayOpen` did the same. Neither included `extra_spots` or opponent-side `extra_spots_opponent` holds, so a team of 5 with 2 players + 3 held spots still showed 3 open slots and accepted new joins, overbooking the team.
 **Fix:** extracted the squad panel's occupancy math into a shared `getTeamOccupancy(teamId, otherTeamId)` helper (own team's `1 + extra_spots` per row, plus `extra_spots_opponent` held by the other team's rows) and used it for `homeCount`/`awayCount` (join panel display) and the `handleJoin` capacity check.
 
-### MD-03 · Full matches disappear from the home feed
-**File:** `web/stores/matchStore.ts` (`fetchMatches`)
-The upcoming query filters `.eq('status', 'open')`, so the moment a match flips to `full` it vanishes from the feed entirely. CLAUDE.md says the home feed should show `status IN ('open','full')` (full matches render with a "Full" badge — `MatchCard` already supports this).
-**Fix:** change the filter to `.in('status', ['open', 'full'])`. Keep the existing client-side "hide fully-booked" filter on the home page or remove it deliberately — decide one behavior.
+### MD-03 · Full matches disappear from the home feed — ✅ Fixed
+**Files:** `web/stores/matchStore.ts` (`fetchMatches`), `web/app/(app)/page.tsx`, `web/app/(app)/discover/page.tsx`
+The upcoming query filtered `.eq('status', 'open')`, so the moment a match flipped to `full` it vanished from the feed entirely — even for players still in it.
+**Fix:** the store now fetches `status IN ('open','full')` for upcoming matches. Chosen behavior (deliberate, not CLAUDE.md's "always show Full with a badge"): a full upcoming match is only shown to players who are already participants in it — everyone else it stays hidden from, since they can't join it anyway. Applied consistently on both Home and Discover (they share `matchStore`, so Discover needed the same participant-aware filter to avoid newly surfacing other people's full matches).
 
 ### MD-04 · Private matches: the invite-code join flow doesn't exist
 **Files:** `web/app/(app)/matches/[id]/page.tsx`, `web/stores/friendStore.ts` (`sendMatchInvites`)

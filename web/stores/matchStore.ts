@@ -44,7 +44,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
     if (filters.showPast) {
       query = query.lt('scheduled_at', now).order('scheduled_at', { ascending: false });
     } else {
-      query = query.eq('status', 'open').gte('scheduled_at', now).order('scheduled_at', { ascending: true });
+      query = query.in('status', ['open', 'full']).gte('scheduled_at', now).order('scheduled_at', { ascending: true });
     }
 
     if (filters.sport !== 'all') {

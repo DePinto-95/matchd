@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useMatchStore } from '@/stores/matchStore';
+import { useAuthStore } from '@/stores/authStore';
 import { MatchCard } from '@/components/match/MatchCard';
 import { FilterBar } from '@/components/match/FilterBar';
 import { Input } from '@/components/ui/Input';
@@ -10,18 +11,33 @@ import { SportType } from '@/types';
 
 export default function DiscoverPage() {
   const { matches, loading, filters, setFilters, fetchMatches } = useMatchStore();
+  const user = useAuthStore((s) => s.user);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     fetchMatches();
   }, [fetchMatches, filters]);
 
-  const filtered = matches.filter((m) =>
-    search === '' ||
-    m.title.toLowerCase().includes(search.toLowerCase()) ||
-    m.location_name.toLowerCase().includes(search.toLowerCase()) ||
-    m.venues?.name?.toLowerCase().includes(search.toLowerCase())
-  );
+  // Upcoming full matches are hidden unless the current user is already in them.
+  const filtered = matches
+    .filter((match) => {
+      if (filters.showPast) return true;
+      const actual = match.match_participants
+        ? match.match_participants.reduce(
+            (sum, p) => sum + 1 + (p.extra_spots ?? 0) + (p.extra_spots_opponent ?? 0),
+            0
+          )
+        : match.current_players;
+      const isFull = actual >= match.max_players;
+      if (!isFull) return true;
+      return match.match_participants?.some((p) => p.player_id === user?.id) ?? false;
+    })
+    .filter((m) =>
+      search === '' ||
+      m.title.toLowerCase().includes(search.toLowerCase()) ||
+      m.location_name.toLowerCase().includes(search.toLowerCase()) ||
+      m.venues?.name?.toLowerCase().includes(search.toLowerCase())
+    );
 
   return (
     <div className="flex flex-col gap-6">

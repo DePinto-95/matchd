@@ -13,6 +13,7 @@ import { SportType } from '@/types';
 export default function HomePage() {
   const { matches, loading, filters, setFilters, fetchMatches } = useMatchStore();
   const profile = useAuthStore((s) => s.profile);
+  const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
     fetchMatches();
@@ -26,6 +27,22 @@ export default function HomePage() {
     setFilters({ showPast: !filters.showPast });
   };
 
+  // Upcoming full matches are hidden from the feed unless the current user is
+  // already in them — otherwise they'd show a match nobody can actually join.
+  const visibleMatches = filters.showPast
+    ? matches
+    : matches.filter((match) => {
+        const actual = match.match_participants
+          ? match.match_participants.reduce(
+              (sum, p) => sum + 1 + (p.extra_spots ?? 0) + (p.extra_spots_opponent ?? 0),
+              0
+            )
+          : match.current_players;
+        const isFull = actual >= match.max_players;
+        if (!isFull) return true;
+        return match.match_participants?.some((p) => p.player_id === user?.id) ?? false;
+      });
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -35,7 +52,7 @@ export default function HomePage() {
             {profile?.username ? `Hey, ${profile.username} 👋` : 'Find your game'}
           </h1>
           <p className="text-text-muted text-sm mt-1">
-            {matches.length} {matches.length === 1 ? 'match' : 'matches'} {filters.showPast ? 'in history' : 'available'}
+            {visibleMatches.length} {visibleMatches.length === 1 ? 'match' : 'matches'} {filters.showPast ? 'in history' : 'available'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -77,7 +94,7 @@ export default function HomePage() {
             <div key={i} className="bg-surface border border-border rounded-2xl h-44 animate-pulse" />
           ))}
         </div>
-      ) : matches.length === 0 ? (
+      ) : visibleMatches.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">🏅</span>
           <h2 className="font-heading font-bold text-xl text-text mb-2">No matches found</h2>
@@ -99,20 +116,9 @@ export default function HomePage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {matches
-            .filter((match) => {
-              if (filters.showPast) return true;
-              const actual = match.match_participants
-                ? match.match_participants.reduce(
-                    (sum, p) => sum + 1 + (p.extra_spots ?? 0) + (p.extra_spots_opponent ?? 0),
-                    0
-                  )
-                : match.current_players;
-              return actual < match.max_players;
-            })
-            .map((match) => (
-              <MatchCard key={match.id} match={match} />
-            ))}
+          {visibleMatches.map((match) => (
+            <MatchCard key={match.id} match={match} />
+          ))}
         </div>
       )}
     </div>
