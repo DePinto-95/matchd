@@ -194,7 +194,9 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
 
     // Find the participant row to know how many extra spots to release
     const participantRow = match.match_participants?.find((p) => p.player_id === user.id);
-    const extraSpots = (participantRow as { extra_spots?: number })?.extra_spots ?? 0;
+    const { extra_spots: extraSpots = 0, extra_spots_opponent: extraSpotsOpponent = 0 } =
+      (participantRow as { extra_spots?: number; extra_spots_opponent?: number }) ?? {};
+    const totalExtraSpots = extraSpots + extraSpotsOpponent;
 
     await supabase
       .from('match_participants')
@@ -202,11 +204,11 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       .eq('match_id', match.id)
       .eq('player_id', user.id);
 
-    // The trigger subtracts 1 for the DELETE; subtract extra spots too
-    if (extraSpots > 0) {
+    // The trigger subtracts 1 for the DELETE; subtract extra spots (own + opponent side) too
+    if (totalExtraSpots > 0) {
       await supabase.rpc('adjust_match_player_count', {
         p_match_id: match.id,
-        p_delta: -extraSpots,
+        p_delta: -totalExtraSpots,
       });
     }
 

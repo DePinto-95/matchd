@@ -7,10 +7,10 @@ Priorities: **P1** = bug / broken behavior, **P2** = missing feature that blocks
 
 ## P1 — Bugs
 
-### MD-01 · Leaving a match doesn't release opponent-side reserved spots
+### MD-01 · Leaving a match doesn't release opponent-side reserved spots — ✅ Fixed
 **File:** `web/app/(app)/matches/[id]/page.tsx` (`handleLeave`)
 The leave flow calls `adjust_match_player_count` with `-extra_spots` only. If the player also reserved spots on the opponent team (`extra_spots_opponent`), those stay counted in `current_players` forever, so the match shows phantom players and can wrongly stay/become `full`. CLAUDE.md documents the correct behavior: release `-(extra_spots + extra_spots_opponent)`.
-**Fix:** include `extra_spots_opponent` in the delta passed to the RPC.
+**Fix:** `handleLeave` now sums `extra_spots + extra_spots_opponent` and passes the negative total to the RPC.
 
 ### MD-02 · Join capacity check ignores held ("reserved") spots — teams can be overbooked
 **File:** `web/app/(app)/matches/[id]/page.tsx` (`handleJoin`, join panel)
