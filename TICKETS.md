@@ -12,10 +12,10 @@ Priorities: **P1** = bug / broken behavior, **P2** = missing feature that blocks
 The leave flow calls `adjust_match_player_count` with `-extra_spots` only. If the player also reserved spots on the opponent team (`extra_spots_opponent`), those stay counted in `current_players` forever, so the match shows phantom players and can wrongly stay/become `full`. CLAUDE.md documents the correct behavior: release `-(extra_spots + extra_spots_opponent)`.
 **Fix:** `handleLeave` now sums `extra_spots + extra_spots_opponent` and passes the negative total to the RPC.
 
-### MD-02 · Join capacity check ignores held ("reserved") spots — teams can be overbooked
+### MD-02 · Join capacity check ignores held ("reserved") spots — teams can be overbooked — ✅ Fixed
 **File:** `web/app/(app)/matches/[id]/page.tsx` (`handleJoin`, join panel)
-`handleJoin` counts team occupancy as the number of participant *rows* (`currentOnTeam`), and the join panel's `homeCount`/`awayCount`/`homeOpen`/`awayOpen` do the same. Neither includes `extra_spots` or opponent-side `extra_spots_opponent` holds. A team of 5 with 2 players + 3 held spots still shows 3 open slots and accepts new joins, overbooking the team. The squad panel already computes occupancy correctly (`myTeamOccupied` / `opponentOccupied`) — the join path just doesn't use it.
-**Fix:** compute per-team occupancy including both kinds of held spots and use it for the join panel display and the `handleJoin` validation.
+`handleJoin` counted team occupancy as the number of participant *rows* (`currentOnTeam`), and the join panel's `homeCount`/`awayCount`/`homeOpen`/`awayOpen` did the same. Neither included `extra_spots` or opponent-side `extra_spots_opponent` holds, so a team of 5 with 2 players + 3 held spots still showed 3 open slots and accepted new joins, overbooking the team.
+**Fix:** extracted the squad panel's occupancy math into a shared `getTeamOccupancy(teamId, otherTeamId)` helper (own team's `1 + extra_spots` per row, plus `extra_spots_opponent` held by the other team's rows) and used it for `homeCount`/`awayCount` (join panel display) and the `handleJoin` capacity check.
 
 ### MD-03 · Full matches disappear from the home feed
 **File:** `web/stores/matchStore.ts` (`fetchMatches`)

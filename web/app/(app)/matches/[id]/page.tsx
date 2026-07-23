@@ -85,12 +85,18 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const myCurrentExtraSpots = myRow?.extra_spots ?? 0;
   const myCurrentExtraSpotOpponent = myRow?.extra_spots_opponent ?? 0;
   const opponentTeamId = match?.match_teams?.find((t) => t.id !== myRow?.team_id)?.id;
-  const myTeamMembers = match?.match_participants?.filter((p) => p.team_id === myRow?.team_id) ?? [];
-  const opponentMembers = match?.match_participants?.filter((p) => p.team_id === opponentTeamId) ?? [];
-  const myTeamOccupied = myTeamMembers.reduce((sum, p) => sum + 1 + (p.extra_spots ?? 0), 0)
-    + opponentMembers.reduce((sum, p) => sum + (p.extra_spots_opponent ?? 0), 0);
-  const opponentOccupied = opponentMembers.reduce((sum, p) => sum + 1 + (p.extra_spots ?? 0), 0)
-    + myTeamMembers.reduce((sum, p) => sum + (p.extra_spots_opponent ?? 0), 0);
+
+  // Occupancy for a team must include held spots: its own participants' extra_spots,
+  // plus extra_spots_opponent held by participants on the other team.
+  const getTeamOccupancy = (teamId?: string | null, otherTeamId?: string | null) => {
+    const teamMembers = match?.match_participants?.filter((p) => p.team_id === teamId) ?? [];
+    const otherMembers = match?.match_participants?.filter((p) => p.team_id === otherTeamId) ?? [];
+    return teamMembers.reduce((sum, p) => sum + 1 + (p.extra_spots ?? 0), 0)
+      + otherMembers.reduce((sum, p) => sum + (p.extra_spots_opponent ?? 0), 0);
+  };
+
+  const myTeamOccupied = getTeamOccupancy(myRow?.team_id, opponentTeamId);
+  const opponentOccupied = getTeamOccupancy(opponentTeamId, myRow?.team_id);
   const myTeamOpenSlots = (match?.team_size ?? 0) - myTeamOccupied;
   const opponentOpenSlots = (match?.team_size ?? 0) - opponentOccupied;
 
@@ -149,7 +155,8 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
     }
 
     const targetTeam = match.match_teams?.find((t) => t.side === selectedSide);
-    const currentOnTeam = match.match_participants?.filter((p) => p.team_id === targetTeam?.id).length ?? 0;
+    const otherTeam = match.match_teams?.find((t) => t.side !== selectedSide);
+    const currentOnTeam = getTeamOccupancy(targetTeam?.id, otherTeam?.id);
 
     if (currentOnTeam + squadSpots > match.team_size) {
       toast.error(`Only ${match.team_size - currentOnTeam} spot(s) left on that team.`);
@@ -294,8 +301,8 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const sport = SPORTS[match.sport];
   const homeTeam = match.match_teams?.find((t) => t.side === 'home');
   const awayTeam = match.match_teams?.find((t) => t.side === 'away');
-  const homeCount = match.match_participants?.filter((p) => p.team_id === homeTeam?.id).length ?? 0;
-  const awayCount = match.match_participants?.filter((p) => p.team_id === awayTeam?.id).length ?? 0;
+  const homeCount = getTeamOccupancy(homeTeam?.id, awayTeam?.id);
+  const awayCount = getTeamOccupancy(awayTeam?.id, homeTeam?.id);
   const homeOpen = match.team_size - homeCount;
   const awayOpen = match.team_size - awayCount;
   const selectedTeamOpen = selectedSide === 'home' ? homeOpen : selectedSide === 'away' ? awayOpen : 0;
