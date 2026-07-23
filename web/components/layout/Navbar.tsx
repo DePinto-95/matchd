@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Home, Search, Plus, Bell, User, LogOut, Menu, X, Zap, Users } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';
@@ -35,9 +35,11 @@ export function Navbar() {
     }
   }, [profile?.id, fetchNotifications, fetchFriends]);
 
-  useNotificationRealtime(profile?.id ?? '', () => {
+  const handleNewNotification = useCallback(() => {
     if (profile?.id) fetchNotifications(profile.id);
-  });
+  }, [profile?.id, fetchNotifications]);
+
+  useNotificationRealtime(profile?.id ?? '', handleNewNotification);
 
   const handleSignOut = async () => {
     await signOut();
