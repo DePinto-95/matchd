@@ -32,7 +32,7 @@ export function MatchCard({ match }: MatchCardProps) {
       )
     : match.current_players;
   const spotsLeft = match.max_players - actualPlayers;
-  const isFull = match.status === 'full';
+  const isFull = actualPlayers >= match.max_players;
   const color = getSportColor(match.sport);
 
   return (

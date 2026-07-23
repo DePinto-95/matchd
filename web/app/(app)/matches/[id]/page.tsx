@@ -74,7 +74,13 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   }, [match, isParticipant, notifyMatchCompletion]);
 
   const isCreator = match?.creator_id === user?.id;
-  const isFull = match?.status === 'full';
+  // Actual occupancy (participants + held extra spots) rather than matches.status,
+  // which can lag behind squad-spot reservations that don't flip status to 'full'.
+  const actualOccupancy = match?.match_participants?.reduce(
+    (sum, p) => sum + 1 + (p.extra_spots ?? 0) + (p.extra_spots_opponent ?? 0),
+    0
+  ) ?? 0;
+  const isFull = match ? actualOccupancy >= match.max_players : false;
   const isPast = match ? isMatchPast(match.scheduled_at, match.duration_minutes) : false;
 
   useEffect(() => {
@@ -307,7 +313,8 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const awayOpen = match.team_size - awayCount;
   const selectedTeamOpen = selectedSide === 'home' ? homeOpen : selectedSide === 'away' ? awayOpen : 0;
 
-  const statusVariant = match.status === 'open' ? 'success' : match.status === 'full' ? 'warning' : 'error';
+  const displayStatus = match.status === 'open' && isFull ? 'full' : match.status;
+  const statusVariant = displayStatus === 'open' ? 'success' : displayStatus === 'full' ? 'warning' : 'error';
 
   // Result section helpers
   const myTeamSide = match.match_teams?.find((t) => t.id === myRow?.team_id)?.side ?? null;
@@ -391,7 +398,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <Badge variant={statusVariant}>{match.status.replace('_', ' ').toUpperCase()}</Badge>
+              <Badge variant={statusVariant}>{displayStatus.replace('_', ' ').toUpperCase()}</Badge>
               {match.is_private && (
                 <div className="flex items-center gap-1 text-text-muted text-xs">
                   <Lock className="w-3 h-3" />
@@ -412,7 +419,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
             </div>
             <div className="flex items-center gap-2 text-sm text-text">
               <Users className="w-4 h-4 text-text-muted flex-shrink-0" />
-              <span>{match.current_players}/{match.max_players} players · {match.team_size}v{match.team_size}</span>
+              <span>{actualOccupancy}/{match.max_players} players · {match.team_size}v{match.team_size}</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-text">
               <Star className="w-4 h-4 text-text-muted flex-shrink-0" />
