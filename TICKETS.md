@@ -95,6 +95,11 @@ A creator's only lever is Cancel. Allow editing time, location, description, and
 ### MD-18 · Pagination / limits on feeds
 `fetchMatches` fetches every match in the table with nested participants; the history toggle fetches all past matches ever. Add `.limit()` + "load more" (or range pagination), and consider doing the fully-booked filtering server-side.
 
+### MD-30 · Reserve opponent-side spots when joining, not just after
+**File:** `web/app/(app)/matches/[id]/page.tsx` (join panel / `handleJoin`)
+The "Choose your side" join panel only lets a joining player reserve extra spots on their own team (`squadSpots` → `extra_spots`). Reserving spots on the *opponent* team (`extra_spots_opponent`) is currently only possible after joining, via the creator-only squad panel. A player who wants to bring people for both sides (e.g. organizing a friendly where they're bringing both squads) has to join first, then separately open the squad panel to add opponent spots.
+**Scope:** add an "Also reserve spots for the opposing team?" stepper to the join panel alongside the existing own-team spot counter, capped by `opponentOpenSlots`. Pass the value as `extra_spots_opponent` on the initial `match_participants` insert and include it in the `adjust_match_player_count` delta in `handleJoin` (currently only `extraSpots` is applied).
+
 ---
 
 ## P3 — Improvements & cleanup
