@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, use } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { MapPin, Clock, Users, Share2, ChevronLeft, Star, Lock, X, Trophy, AlertCircle, CheckCircle, HelpCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/Button';
 export default function MatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, profile } = useAuthStore();
   const { fetchMatchById, notifyMatchCompletion } = useMatchStore();
   const { friends, fetchFriends, sendMatchInvites } = useFriendStore();
@@ -39,6 +40,9 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const [sharePanelOpen, setSharePanelOpen] = useState(false);
   const [selectedFriendIds, setSelectedFriendIds] = useState<Set<string>>(new Set());
   const [sendingInvites, setSendingInvites] = useState(false);
+  const [codePanelOpen, setCodePanelOpen] = useState(false);
+  const [inviteCodeInput, setInviteCodeInput] = useState('');
+  const [codeVerified, setCodeVerified] = useState(false);
 
   // Result reporting state
   const [resultPanelOpen, setResultPanelOpen] = useState(false);
@@ -63,6 +67,15 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   useMatchRealtime(id, loadMatch);
 
   const isParticipant = match?.match_participants?.some((p) => p.player_id === user?.id);
+
+  // Auto-unlock the join panel when arriving via a match_invite notification's ?code= link.
+  useEffect(() => {
+    if (!match?.is_private || !match.invite_code || codeVerified) return;
+    const code = searchParams.get('code');
+    if (code && code.toUpperCase() === match.invite_code.toUpperCase()) {
+      setCodeVerified(true);
+    }
+  }, [match, searchParams, codeVerified]);
 
   const notifiedRef = useRef(false);
   useEffect(() => {
@@ -273,10 +286,22 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       id: match.id,
       sport: match.sport,
       title: match.title,
+      invite_code: match.invite_code,
     });
     setSendingInvites(false);
     setSharePanelOpen(false);
     setSelectedFriendIds(new Set());
+  };
+
+  const handleVerifyCode = () => {
+    if (!match?.invite_code) return;
+    if (inviteCodeInput.trim().toUpperCase() === match.invite_code.toUpperCase()) {
+      setCodeVerified(true);
+      setCodePanelOpen(false);
+      toast.success('Code verified — you can now join!');
+    } else {
+      toast.error('Invalid invite code.');
+    }
   };
 
   const toggleFriend = (friendId: string) => {
@@ -731,6 +756,24 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
+      {/* Invite code panel (private matches) */}
+      {codePanelOpen && match.is_private && !isParticipant && !isPast && !codeVerified && (
+        <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4">
+          <h3 className="font-semibold text-text">Have an invite code?</h3>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={inviteCodeInput}
+              onChange={(e) => setInviteCodeInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyCode(); }}
+              placeholder="Enter code"
+              className="flex-1 px-4 py-2.5 rounded-xl bg-surface-alt border border-border text-text focus:outline-none focus:border-brand"
+            />
+            <Button onClick={handleVerifyCode}>Unlock</Button>
+          </div>
+        </div>
+      )}
+
       {/* Squad spots panel (for participants) */}
       {squadPanelOpen && isParticipant && !isPast && (
         <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-5">
@@ -835,7 +878,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
           </Link>
         )}
 
-        {!isPast && !isParticipant && !isFull && match.status === 'open' && !match.is_private && (
+        {!isPast && !isParticipant && !isFull && match.status === 'open' && (!match.is_private || codeVerified) && (
           joinPanelOpen ? (
             <>
               <Button variant="secondary" onClick={() => { setJoinPanelOpen(false); setSelectedSide(null); setSquadSpots(1); }} className="flex-1">
@@ -857,8 +900,10 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
           )
         )}
 
-        {!isPast && !isParticipant && match.is_private && !isFull && (
-          <Button disabled className="flex-1">Invite Only</Button>
+        {!isPast && !isParticipant && match.is_private && !isFull && !codeVerified && (
+          <Button variant="secondary" size="lg" className="flex-1" onClick={() => setCodePanelOpen((o) => !o)}>
+            Enter Invite Code
+          </Button>
         )}
 
         {!isPast && isParticipant && !isCreator && (

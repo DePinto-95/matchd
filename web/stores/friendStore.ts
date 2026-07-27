@@ -25,7 +25,7 @@ interface FriendStore {
   sendMatchInvites: (
     senderUsername: string,
     friendIds: string[],
-    match: { id: string; sport: string; title: string }
+    match: { id: string; sport: string; title: string; invite_code?: string | null }
   ) => Promise<void>;
   reportUser: (reporterId: string, reportedId: string, reason: ReportReason, details?: string) => Promise<void>;
 }
@@ -163,7 +163,7 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
       type: 'match_invite',
       title: `${senderUsername} invited you to a match`,
       body: match.title,
-      data: { match_id: match.id, sport: match.sport, title: match.title },
+      data: { match_id: match.id, sport: match.sport, title: match.title, invite_code: match.invite_code ?? undefined },
       read: false,
     }));
     const { error } = await supabase.from('notifications').insert(rows);

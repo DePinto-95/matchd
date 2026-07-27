@@ -101,8 +101,14 @@ export default function NotificationsPage() {
                       const matchId = (n.data as { match_id?: string })?.match_id;
                       if (matchId) router.push(`/matches/${matchId}`);
                     } else if (isMatchInvite) {
-                      const matchId = (n.data as { match_id?: string })?.match_id;
-                      if (matchId) router.push(`/matches/${matchId}`);
+                      const data = n.data as { match_id?: string; invite_code?: string };
+                      if (data?.match_id) {
+                        router.push(
+                          data.invite_code
+                            ? `/matches/${data.match_id}?code=${encodeURIComponent(data.invite_code)}`
+                            : `/matches/${data.match_id}`
+                        );
+                      }
                     } else if (isFriendType) {
                       router.push('/friends');
                     }

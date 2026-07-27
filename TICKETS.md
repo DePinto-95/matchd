@@ -22,10 +22,10 @@ The leave flow calls `adjust_match_player_count` with `-extra_spots` only. If th
 The upcoming query filtered `.eq('status', 'open')`, so the moment a match flipped to `full` it vanished from the feed entirely — even for players still in it.
 **Fix:** the store now fetches `status IN ('open','full')` for upcoming matches. Chosen behavior (deliberate, not CLAUDE.md's "always show Full with a badge"): a full upcoming match is only shown to players who are already participants in it — everyone else it stays hidden from, since they can't join it anyway. Applied consistently on both Home and Discover (they share `matchStore`, so Discover needed the same participant-aware filter to avoid newly surfacing other people's full matches).
 
-### MD-04 · Private matches: the invite-code join flow doesn't exist
-**Files:** `web/app/(app)/matches/[id]/page.tsx`, `web/stores/friendStore.ts` (`sendMatchInvites`)
+### MD-04 · Private matches: the invite-code join flow doesn't exist — ✅ Fixed
+**Files:** `web/app/(app)/matches/[id]/page.tsx`, `web/stores/friendStore.ts` (`sendMatchInvites`), `web/app/(app)/notifications/page.tsx`
 An `invite_code` is generated at creation and shown in the share text, but there is no way to *use* it: non-participants viewing a private match just see a disabled "Invite Only" button, and there's no code-entry UI anywhere. Worse, `sendMatchInvites` to friends doesn't include the code in the notification `data`, so even an explicitly invited friend cannot join a private match.
-**Fix:** (a) add a "Have an invite code?" input on the private match page that unlocks the join panel when the code matches; (b) include `invite_code` in `match_invite` notification data and auto-unlock join when arriving via that notification (e.g. `?code=` query param).
+**Fix:** (a) the "Invite Only" disabled button is now "Enter Invite Code", which opens a small panel with a text input; entering the correct code sets a `codeVerified` flag that unlocks the normal join panel/flow. (b) `sendMatchInvites` now includes `invite_code` in the `match_invite` notification's `data`; the notifications page routes to `/matches/{id}?code={invite_code}` when present, and the match page auto-verifies against that query param on load.
 
 ### MD-05 · Free-text search breaks the PostgREST `.or()` filter
 **Files:** `web/app/(app)/friends/page.tsx`, `web/app/(app)/friends/invite/page.tsx`
