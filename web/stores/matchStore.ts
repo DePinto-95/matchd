@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import { Match, SportType } from '@/types';
 import { supabase } from '@/lib/supabase/client';
 
@@ -51,7 +52,12 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       query = query.eq('sport', filters.sport);
     }
 
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) {
+      toast.error('Could not load matches. Please try again.');
+      set({ loading: false });
+      return;
+    }
     set({ matches: data ?? [], loading: false });
   },
 
