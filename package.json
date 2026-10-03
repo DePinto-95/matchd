@@ -1,0 +1,9 @@
+{
+  "name": "matchd-monorepo",
+  "private": true,
+  "workspaces": [
+    "web",
+    "matchd",
+    "shared"
+  ]
+}
