@@ -10,7 +10,7 @@ import { ChevronLeft, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { SPORTS, SPORT_LIST } from '@/constants/sports';
-import { generateInviteCode } from '@/lib/helpers';
+import { generateInviteCode, withTimeout, TimeoutError } from '@/lib/helpers';
 import { SportType } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -113,54 +113,69 @@ export default function CreateMatchPage() {
     try {
       const inviteCode = isPrivate ? generateInviteCode() : null;
 
-      const { data: match, error } = await supabase
-        .from('matches')
-        .insert({
-          creator_id: user.id,
-          sport,
-          title: data.title,
-          description: data.description ?? null,
-          location_name: data.location_name,
-          scheduled_at: scheduledAt,
-          duration_minutes: duration,
-          max_players: maxPlayers,
-          team_size: teamSize,
-          min_rating: minR,
-          max_rating: maxR,
-          is_private: isPrivate,
-          invite_code: inviteCode,
-          status: 'open',
-        })
-        .select()
-        .single();
+      const { data: match, error } = await withTimeout(
+        supabase
+          .from('matches')
+          .insert({
+            creator_id: user.id,
+            sport,
+            title: data.title,
+            description: data.description ?? null,
+            location_name: data.location_name,
+            scheduled_at: scheduledAt,
+            duration_minutes: duration,
+            max_players: maxPlayers,
+            team_size: teamSize,
+            min_rating: minR,
+            max_rating: maxR,
+            is_private: isPrivate,
+            invite_code: inviteCode,
+            status: 'open',
+          })
+          .select()
+          .single(),
+        15000
+      );
 
       if (error || !match) {
         toast.error('Could not create match. Please try again.');
         return;
       }
 
-      await supabase.from('match_teams').insert([
-        { match_id: match.id, side: 'home', name: 'Home' },
-        { match_id: match.id, side: 'away', name: 'Away' },
-      ]);
+      await withTimeout(
+        supabase.from('match_teams').insert([
+          { match_id: match.id, side: 'home', name: 'Home' },
+          { match_id: match.id, side: 'away', name: 'Away' },
+        ]),
+        15000
+      );
 
-      const { data: teams } = await supabase
-        .from('match_teams').select('id, side').eq('match_id', match.id);
+      const { data: teams } = await withTimeout(
+        supabase.from('match_teams').select('id, side').eq('match_id', match.id),
+        15000
+      );
 
       const homeTeam = teams?.find((t: { side: string }) => t.side === 'home');
       if (homeTeam) {
-        await supabase.from('match_participants').insert({
-          match_id: match.id,
-          player_id: user.id,
-          team_id: homeTeam.id,
-          status: 'confirmed',
-        });
+        await withTimeout(
+          supabase.from('match_participants').insert({
+            match_id: match.id,
+            player_id: user.id,
+            team_id: homeTeam.id,
+            status: 'confirmed',
+          }),
+          15000
+        );
       }
 
       toast.success('Match created!');
       router.push(`/matches/${match.id}`);
-    } catch {
-      toast.error('Something went wrong. Please try again.');
+    } catch (err) {
+      if (err instanceof TimeoutError) {
+        toast.error('This is taking too long. Check your connection and try again.');
+      } else {
+        toast.error('Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

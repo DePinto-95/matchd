@@ -42,6 +42,21 @@ export const formatPrice = (price: number, currency: string): string => {
   return `${price} ${currency}`;
 };
 
+// Guards against a Supabase call hanging indefinitely (e.g. a stuck auth
+// token lock) by racing it against a timeout instead of leaving the UI
+// stuck in a loading state forever.
+export class TimeoutError extends Error {}
+
+export const withTimeout = <T,>(promise: PromiseLike<T>, ms: number): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new TimeoutError(`Timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+};
+
 export const getInitials = (name: string): string => {
   return name
     .split(' ')
