@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import { SportType } from '@/types';
-import { SPORT_LIST } from '@/constants/sports';
-import { theme } from '@/constants/theme';
+import { SportType } from '@matchd/shared/types';
+import { SPORT_LIST } from '@matchd/shared/constants/sports';
+import { theme } from '@matchd/shared/constants/theme';
 
 interface SportSelectorProps {
   selected: SportType | null;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import { SPORTS } from '@/constants/sports';
-import { SportType } from '@/types';
+import { SPORTS } from '@matchd/shared/constants/sports';
+import { SportType } from '@matchd/shared/types';
 
 interface SportIconProps {
   sport: SportType;

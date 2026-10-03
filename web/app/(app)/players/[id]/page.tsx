@@ -6,13 +6,13 @@ import { ChevronLeft, UserPlus, UserCheck, UserX, Clock, Flag } from 'lucide-rea
 import { useProfile } from '@/hooks/useProfile';
 import { useAuthStore } from '@/stores/authStore';
 import { useFriendStore } from '@/stores/friendStore';
-import { SPORTS } from '@/constants/sports';
-import { getRatingColor } from '@/constants/theme';
+import { SPORTS } from '@matchd/shared/constants/sports';
+import { getRatingColor } from '@matchd/shared/constants/theme';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { MatchCard } from '@/components/match/MatchCard';
-import type { ReportReason } from '@/types';
+import type { ReportReason } from '@matchd/shared/types';
 
 const REPORT_REASONS: Record<ReportReason, string> = {
   spam_scam: 'Spam / Scam',

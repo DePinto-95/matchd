@@ -9,10 +9,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
-import { theme } from '@/constants/theme';
-import { Match } from '@/types';
+import { theme } from '@matchd/shared/constants/theme';
+import { Match } from '@matchd/shared/types';
 import { MatchCard } from '@/components/MatchCard';
-import { SPORT_LIST } from '@/constants/sports';
+import { SPORT_LIST } from '@matchd/shared/constants/sports';
 import { SportIcon } from '@/components/SportIcon';
 import { Ionicons } from '@expo/vector-icons';
 

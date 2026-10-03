@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase/client';
-import type { Friendship, FriendRelation, ReportReason, Profile } from '@/types';
+import type { Friendship, FriendRelation, ReportReason, Profile } from '@matchd/shared/types';
 
 type AcceptedRow = Omit<Friendship, 'profiles'> & {
   requester: Profile;

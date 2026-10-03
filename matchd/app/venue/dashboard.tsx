@@ -10,9 +10,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
-import { theme } from '@/constants/theme';
-import { Booking, Venue } from '@/types';
-import { formatMatchDate } from '@/lib/helpers';
+import { theme } from '@matchd/shared/constants/theme';
+import { Booking, Venue } from '@matchd/shared/types';
+import { formatMatchDate } from '@matchd/shared/lib/helpers';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function VenueDashboardScreen() {

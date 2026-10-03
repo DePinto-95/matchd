@@ -4,9 +4,9 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
-import { theme } from '@/constants/theme';
+import { theme } from '@matchd/shared/constants/theme';
 import { Button } from '@/components/ui/Button';
-import { AccountType } from '@/types';
+import { AccountType } from '@matchd/shared/types';
 
 const OPTIONS: { type: AccountType; emoji: string; title: string; description: string }[] = [
   {

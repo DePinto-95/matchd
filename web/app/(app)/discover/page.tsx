@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { MatchCard } from '@/components/match/MatchCard';
 import { FilterBar } from '@/components/match/FilterBar';
 import { Input } from '@/components/ui/Input';
-import { SportType } from '@/types';
+import { SportType } from '@matchd/shared/types';
 
 export default function DiscoverPage() {
   const { matches, loading, filters, setFilters, fetchMatches } = useMatchStore();

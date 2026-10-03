@@ -8,7 +8,7 @@ import { useFriendStore } from '@/stores/friendStore';
 import { supabase } from '@/lib/supabase/client';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import type { Profile } from '@/types';
+import type { Profile } from '@matchd/shared/types';
 
 type Tab = 'friends' | 'requests' | 'find';
 

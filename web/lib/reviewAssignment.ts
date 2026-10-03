@@ -1,4 +1,4 @@
-import { MatchParticipant } from '@/types';
+import { MatchParticipant } from '@matchd/shared/types';
 
 /**
  * Review assignment.

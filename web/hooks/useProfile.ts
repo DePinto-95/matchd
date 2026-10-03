@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { isMatchPast } from '@/lib/helpers';
-import { Profile, PlayerRating, Match } from '@/types';
+import { isMatchPast } from '@matchd/shared/lib/helpers';
+import { Profile, PlayerRating, Match } from '@matchd/shared/types';
 
 export const useProfile = (userId?: string) => {
   const [profile, setProfile] = useState<Profile | null>(null);

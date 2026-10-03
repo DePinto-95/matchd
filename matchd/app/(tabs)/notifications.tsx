@@ -4,9 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';
-import { theme } from '@/constants/theme';
-import { formatTimeAgo } from '@/lib/helpers';
-import { Notification } from '@/types';
+import { theme } from '@matchd/shared/constants/theme';
+import { formatTimeAgo } from '@matchd/shared/lib/helpers';
+import { Notification } from '@matchd/shared/types';
 import { Ionicons } from '@expo/vector-icons';
 
 const NOTIFICATION_ICONS: Record<string, string> = {

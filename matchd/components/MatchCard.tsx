@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Match } from '@/types';
-import { theme } from '@/constants/theme';
-import { SPORTS } from '@/constants/sports';
-import { formatMatchDate, getSlotsText, formatPrice } from '@/lib/helpers';
+import { Match } from '@matchd/shared/types';
+import { theme } from '@matchd/shared/constants/theme';
+import { SPORTS } from '@matchd/shared/constants/sports';
+import { formatMatchDate, getSlotsText, formatPrice } from '@matchd/shared/lib/helpers';
 import { SportIcon } from './SportIcon';
 import { RatingBadge } from './RatingBadge';
 import { Badge } from './ui/Badge';

@@ -8,8 +8,12 @@ import { useAuthStore } from '@/stores/authStore';
 import { MatchCard } from '@/components/match/MatchCard';
 import { FilterBar } from '@/components/match/FilterBar';
 import { Button } from '@/components/ui/Button';
-import { SportType } from '@/types';
+import { SportType } from '@matchd/shared/types';
 
+// Home feed — the app's main landing page after login.
+// Lives at app/(app)/page.tsx: the "(app)" segment is a Next.js route
+// group that applies the authenticated Navbar layout without adding a
+// URL segment, so this renders at "/".
 export default function HomePage() {
   const { matches, loading, filters, setFilters, fetchMatches } = useMatchStore();
   const profile = useAuthStore((s) => s.profile);

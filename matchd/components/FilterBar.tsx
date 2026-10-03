@@ -1,8 +1,8 @@
 import React from 'react';
 import { ScrollView, TouchableOpacity, Text, View } from 'react-native';
-import { SportType } from '@/types';
-import { SPORTS, SPORT_LIST } from '@/constants/sports';
-import { theme } from '@/constants/theme';
+import { SportType } from '@matchd/shared/types';
+import { SPORTS, SPORT_LIST } from '@matchd/shared/constants/sports';
+import { theme } from '@matchd/shared/constants/theme';
 
 interface FilterBarProps {
   selected: SportType | 'all';

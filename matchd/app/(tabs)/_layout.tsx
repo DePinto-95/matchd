@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text } from 'react-native';
-import { theme } from '@/constants/theme';
+import { theme } from '@matchd/shared/constants/theme';
 import { useNotificationStore } from '@/stores/notificationStore';
 
 function TabBadge({ count }: { count: number }) {

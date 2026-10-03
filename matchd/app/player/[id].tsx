@@ -9,8 +9,8 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuthStore } from '@/stores/authStore';
-import { theme } from '@/constants/theme';
-import { SPORTS } from '@/constants/sports';
+import { theme } from '@matchd/shared/constants/theme';
+import { SPORTS } from '@matchd/shared/constants/sports';
 import { Avatar } from '@/components/ui/Avatar';
 import { RatingBadge } from '@/components/RatingBadge';
 import { MatchCard } from '@/components/MatchCard';

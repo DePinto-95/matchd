@@ -3,7 +3,7 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
-import { theme } from '@/constants/theme';
+import { theme } from '@matchd/shared/constants/theme';
 import { Button } from '@/components/ui/Button';
 
 export default function ConfirmScreen() {

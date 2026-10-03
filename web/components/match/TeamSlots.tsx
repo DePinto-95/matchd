@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { MatchTeam, MatchParticipant } from '@/types';
+import { MatchTeam, MatchParticipant } from '@matchd/shared/types';
 import { Avatar } from '@/components/ui/Avatar';
 
 interface TeamSlotsProps {

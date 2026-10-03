@@ -9,7 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '@/constants/theme';
+import { theme } from '@matchd/shared/constants/theme';
 
 interface ModalProps {
   visible: boolean;

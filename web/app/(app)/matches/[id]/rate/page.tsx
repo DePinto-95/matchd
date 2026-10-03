@@ -7,11 +7,11 @@ import { useAuthStore } from '@/stores/authStore';
 import { useMatchStore } from '@/stores/matchStore';
 import { useRatings } from '@/hooks/useRatings';
 import { getReviewAssignment } from '@/lib/reviewAssignment';
-import { Match, MatchParticipant } from '@/types';
+import { Match, MatchParticipant } from '@matchd/shared/types';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase/client';
-import { isReviewWindowClosed, REVIEW_WINDOW_DAYS } from '@/lib/helpers';
+import { isReviewWindowClosed, REVIEW_WINDOW_DAYS } from '@matchd/shared/lib/helpers';
 import { toast } from 'sonner';
 
 export default function RatePlayersPage({ params }: { params: Promise<{ id: string }> }) {

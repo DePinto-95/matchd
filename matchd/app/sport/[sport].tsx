@@ -7,9 +7,9 @@ import {
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { theme } from '@/constants/theme';
-import { Match, SportType } from '@/types';
-import { SPORTS } from '@/constants/sports';
+import { theme } from '@matchd/shared/constants/theme';
+import { Match, SportType } from '@matchd/shared/types';
+import { SPORTS } from '@matchd/shared/constants/sports';
 import { MatchCard } from '@/components/MatchCard';
 
 export default function SportBrowseScreen() {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Image } from 'react-native';
-import { theme } from '@/constants/theme';
-import { getInitials } from '@/lib/helpers';
+import { theme } from '@matchd/shared/constants/theme';
+import { getInitials } from '@matchd/shared/lib/helpers';
 
 interface AvatarProps {
   uri?: string | null;

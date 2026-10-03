@@ -9,9 +9,9 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { theme } from '@/constants/theme';
-import { Venue, Match } from '@/types';
-import { SPORTS } from '@/constants/sports';
+import { theme } from '@matchd/shared/constants/theme';
+import { Venue, Match } from '@matchd/shared/types';
+import { SPORTS } from '@matchd/shared/constants/sports';
 import { MatchCard } from '@/components/MatchCard';
 import { Badge } from '@/components/ui/Badge';
 import { Ionicons } from '@expo/vector-icons';

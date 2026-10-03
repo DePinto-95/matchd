@@ -11,20 +11,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 MatchD/
 ├── web/        ← ACTIVE PROJECT (Next.js web app)
-└── matchd/     ← Reference only (original React Native/Expo app, not in active development)
+├── matchd/     ← Reference only (original React Native/Expo app, not in active development)
+├── shared/     ← @matchd/shared — code reused by both frontends (see "Shared code" below)
+└── supabase/   ← The actual backend: SQL schema, RLS policies, triggers, migrations
 ```
 
-All active development happens in `web/`. The `matchd/` folder is kept as a reference for when the mobile app is built later.
+This is an npm workspaces monorepo (root `package.json` lists `web`, `matchd`, `shared`). All active development happens in `web/`. The `matchd/` folder is kept as a reference for when the mobile app is built later. There is no custom server anywhere in this repo — "backend" means the Supabase-hosted Postgres/Auth/Storage/Realtime service, defined by the SQL files in `supabase/` and called directly from frontend code via the Supabase JS client.
 
-## Commands (run from `web/`)
+## Commands
 
 ```bash
-# Start dev server
-npm run dev
+# Install deps — run from the repo root (npm workspaces), not from web/
+npm install
 
-# Build for production
-npm run build
+# Everything else still runs from web/
+cd web
+npm run dev     # start dev server
+npm run build   # build for production
 ```
+
+## Shared code (`shared/`)
+
+`@matchd/shared` is an npm workspace package holding code with zero framework dependency — safe to use from both the Next.js app and the Expo/React Native app:
+- `shared/types` — all DB/domain TypeScript types
+- `shared/constants` — `sports.ts`, `theme.ts`
+- `shared/lib/helpers.ts` — pure date/string/formatting helpers
+- `shared/stores` — zustand store **factories** (`createAuthStore(supabase)`, `createMatchStore(supabase, options)`, `createNotificationStore(supabase)`). Each app's own `stores/*.ts` is a 2-3 line wrapper that injects its own platform-specific Supabase client (and, for `web`, a `sonner` toast callback) and exports the bound hook.
+
+UI components are **not** shared — every `matchd/components/*` file imports React Native primitives (`View`, `Text`, etc.) directly, which have no DOM equivalent. Sharing components would require adopting a cross-platform UI layer (react-native-web, Tamagui, …); that's a separate decision, not needed while `matchd/` stays reference-only.
+
+**Rule:** types, constants, and pure business logic shared by both apps belong in `shared/` — never duplicate them back into `web/` or `matchd/`. Import via the package name (e.g. `@matchd/shared/constants/sports`), not a relative path.
 
 ## Architecture (`web/`)
 
@@ -95,7 +111,7 @@ Design tokens:
 - Fonts: Space Grotesk (headings), Inter (body)
 
 ### Sport Config
-All sport metadata lives in `constants/sports.ts`. Reference `SPORTS[sport]` everywhere — never hardcode sport-specific values inline.
+All sport metadata lives in `shared/constants/sports.ts` (imported as `@matchd/shared/constants/sports`). Reference `SPORTS[sport]` everywhere — never hardcode sport-specific values inline.
 
 ## Key Patterns
 
@@ -107,7 +123,7 @@ All sport metadata lives in `constants/sports.ts`. Reference `SPORTS[sport]` eve
 
 **Match date validation**: Matches must be scheduled in the future and no more than 1 year ahead. Date input is `DD/MM/YYYY`, time is `HH:MM` (24h). Both auto-format as the user types.
 
-**Rating system**: Ratings are never self-reported. After a match completes, players rate assigned teammates/opponents via `match_ratings`. The `update_player_rating` DB trigger recalculates the rolling average per review (no waiting for all reviews); the combined rating blends Elo and reviews weighted by reviews received (`min(0.6, n/(n+4))`). Reviews close 7 days after match start — enforced by the `enforce_review_deadline` trigger (`review_deadline.sql`) and mirrored by `isReviewWindowClosed` in `lib/helpers.ts`. Skipped/missing reviews need no special handling: they simply leave more weight on Elo.
+**Rating system**: Ratings are never self-reported. After a match completes, players rate assigned teammates/opponents via `match_ratings`. The `update_player_rating` DB trigger recalculates the rolling average per review (no waiting for all reviews); the combined rating blends Elo and reviews weighted by reviews received (`min(0.6, n/(n+4))`). Reviews close 7 days after match start — enforced by the `enforce_review_deadline` trigger (`supabase/review_deadline.sql`) and mirrored by `isReviewWindowClosed` in `shared/lib/helpers.ts`. Skipped/missing reviews need no special handling: they simply leave more weight on Elo.
 
 **Private matches**: Set `is_private = true` and share the `invite_code`. Join is only possible with the code.
 

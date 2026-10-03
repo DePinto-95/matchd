@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { getRatingColor } from '@/constants/theme';
-import { formatRating } from '@/lib/helpers';
+import { getRatingColor } from '@matchd/shared/constants/theme';
+import { formatRating } from '@matchd/shared/lib/helpers';
 
 interface RatingBadgeProps {
   rating: number;

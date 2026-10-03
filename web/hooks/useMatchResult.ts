@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { MatchResult, MatchWinnerSide } from '@/types';
+import { MatchResult, MatchWinnerSide } from '@matchd/shared/types';
 
 export const useMatchResult = (matchId: string) => {
   const [result, setResult] = useState<MatchResult | null>(null);

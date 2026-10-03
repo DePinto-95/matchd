@@ -11,8 +11,8 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
-import { theme } from '@/constants/theme';
-import { SquadMember } from '@/types';
+import { theme } from '@matchd/shared/constants/theme';
+import { SquadMember } from '@matchd/shared/types';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';

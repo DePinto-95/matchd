@@ -1,7 +1,7 @@
 'use client';
 
-import { SPORT_LIST } from '@/constants/sports';
-import { SportType } from '@/types';
+import { SPORT_LIST } from '@matchd/shared/constants/sports';
+import { SportType } from '@matchd/shared/types';
 
 interface FilterBarProps {
   selected: SportType | 'all';

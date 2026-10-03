@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
-import { MatchTeam, MatchParticipant } from '@/types';
-import { theme } from '@/constants/theme';
+import { MatchTeam, MatchParticipant } from '@matchd/shared/types';
+import { theme } from '@matchd/shared/constants/theme';
 import { Avatar } from './ui/Avatar';
 import { Ionicons } from '@expo/vector-icons';
 

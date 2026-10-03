@@ -4,8 +4,8 @@ import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { MapPin, Phone, Mail, ChevronLeft, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
-import { Venue } from '@/types';
-import { SPORTS } from '@/constants/sports';
+import { Venue } from '@matchd/shared/types';
+import { SPORTS } from '@matchd/shared/constants/sports';
 import { Badge } from '@/components/ui/Badge';
 
 export default function VenuePage({ params }: { params: Promise<{ id: string }> }) {

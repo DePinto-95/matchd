@@ -1,4 +1,4 @@
-import { SportType } from '@/types';
+import { SportType } from '../types';
 
 export interface SportConfig {
   id: SportType;

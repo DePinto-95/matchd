@@ -3,8 +3,8 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck, Users, Share2, Star, X, Trophy, HelpCircle, Trash2, MailOpen, Mail } from 'lucide-react';
-import { SPORTS } from '@/constants/sports';
-import type { SportType } from '@/types';
+import { SPORTS } from '@matchd/shared/constants/sports';
+import type { SportType } from '@matchd/shared/types';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';

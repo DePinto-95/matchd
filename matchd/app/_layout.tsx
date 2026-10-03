@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/stores/authStore';
-import { theme } from '@/constants/theme';
+import { theme } from '@matchd/shared/constants/theme';
 import '../global.css';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {

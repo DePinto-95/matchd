@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { MapPin, Clock, Users, Lock } from 'lucide-react';
 import { format } from 'date-fns';
-import { Match } from '@/types';
-import { SPORTS } from '@/constants/sports';
+import { Match } from '@matchd/shared/types';
+import { SPORTS } from '@matchd/shared/constants/sports';
 import { Badge } from '@/components/ui/Badge';
 
 interface MatchCardProps {

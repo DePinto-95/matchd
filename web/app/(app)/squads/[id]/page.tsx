@@ -4,7 +4,7 @@ import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
-import { Squad } from '@/types';
+import { Squad } from '@matchd/shared/types';
 import { Avatar } from '@/components/ui/Avatar';
 import Link from 'next/link';
 

@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Profile, PlayerRating } from '@/types';
-import { theme } from '@/constants/theme';
+import { Profile, PlayerRating } from '@matchd/shared/types';
+import { theme } from '@matchd/shared/constants/theme';
 import { Avatar } from './ui/Avatar';
 import { RatingBadge } from './RatingBadge';
-import { SPORTS } from '@/constants/sports';
+import { SPORTS } from '@matchd/shared/constants/sports';
 
 interface PlayerCardProps {
   profile: Profile;

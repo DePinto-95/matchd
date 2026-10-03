@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { MatchParticipant } from '@/types';
+import { MatchParticipant } from '@matchd/shared/types';
 
 export const useRatings = (matchId: string, sport: string) => {
   const [submitting, setSubmitting] = useState(false);

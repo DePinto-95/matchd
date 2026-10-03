@@ -1,6 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, View } from 'react-native';
-import { theme } from '@/constants/theme';
+import { theme } from '@matchd/shared/constants/theme';
 
 interface ButtonProps {
   onPress: () => void;
