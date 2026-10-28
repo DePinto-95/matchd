@@ -8,6 +8,8 @@ Priorities: **P1** = bug / broken behavior, **P2** = missing feature that blocks
 > in `shared/enums/`, and the schema captured into `supabase/migrations/`. File
 > paths in older tickets may be stale; see `CLAUDE.md` for the current layout.
 > Closed as part of that work: MD-09, MD-10, MD-12, MD-22, MD-23.
+> **MD-32** is the verification checklist for that work and should be worked
+> through before anything is built on top of it.
 > Still open and now easier to fix, because the queries live in one place:
 > **MD-05** (unescaped PostgREST `.or()` search term — now a one-line fix in
 > `profileService.search`), **MD-19** (swallowed Supabase errors) and **MD-20**
@@ -17,6 +19,114 @@ Priorities: **P1** = bug / broken behavior, **P2** = missing feature that blocks
 ---
 
 ## P1 — Bugs
+
+### MD-32 · Verify the restructure — nothing has been run in a browser yet
+
+**Do this before building anything new on top.** The 2026-10-28 restructure moved every page's state and queries. It passes `tsc --noEmit` and `next build`, but **no flow has been exercised in a browser**, and there is no test suite to catch a regression. This ticket is the checklist — tick items off and delete the ticket once it is clean.
+
+Each item names what specifically changed, so if something misbehaves you know where to look.
+
+#### A · Commands
+
+- [ ] `npm install` from the **repo root** (npm workspaces — not from `web/`)
+- [ ] `cd web && npx tsc --noEmit` — must be silent
+- [ ] `cd web && npm run build` — must say "Compiled successfully"
+- [ ] Boundary check returns **only** `web/proxy.ts` and `web/app/auth/callback/route.ts` — the command is in CLAUDE.md under "Frontend vs backend"
+- [ ] `cd web && npm run dev` starts with no console errors
+
+#### B · Database
+
+- [x] Run the five `SELECT DISTINCT` queries at the top of `supabase/migrations/0001_constrain_enum_columns.sql` — *done 2026-10-28: `match_participants.status` = confirmed, `friendships.status` = accepted, `bookings` empty, `notifications.type` = match_happened_check / rate_players / match_completed. All allowed, nothing blocking.*
+- [ ] `SELECT DISTINCT reason FROM user_reports;` — the one query not yet run. If it errors with "relation does not exist", the table must be created from the baseline **before** applying `0001`, because `0001` alters it. Check with `SELECT to_regclass('public.user_reports');` — null means missing.
+- [ ] Apply `supabase/migrations/0001_constrain_enum_columns.sql` in the SQL editor. **Do not run `0000_baseline_schema.sql`** — it builds a schema from scratch and these tables already exist.
+- [ ] Confirm the five constraints landed:
+  ```sql
+  SELECT conname, conrelid::regclass FROM pg_constraint
+  WHERE conname LIKE '%_status_check'
+     OR conname IN ('notifications_type_check', 'user_reports_reason_check');
+  ```
+- [ ] Diff `0000_baseline_schema.sql` against the real schema and delete the `[RECONSTRUCTED]` markers. `user_reports`, three `match_participants` columns, `matches.rating_notifications_sent`, the `adjust_match_player_count` RPC, most RLS policies and the avatars bucket were rebuilt from the TypeScript, not copied from SQL — they are unconfirmed until this is done. Dump with `supabase db dump --schema public -f live_schema.sql`.
+
+#### C · Flows (needs two accounts)
+
+**Auth** — `authService` / `profileService` replaced the direct `supabase.auth` calls
+- [ ] Register; a `profiles` row appears with the right `account_type`
+- [ ] Log out, log back in
+- [ ] Forgot password → email link → set new password → redirected to login
+- [ ] Click a reset link **while already logged in** — known bug MD-08, expected to fail. Confirm it is no worse than before.
+
+**Profile** — split into `features/profile/`, storage moved to `storageService`
+- [ ] Upload an avatar; it appears in the header *and* the Navbar
+- [ ] Remove the photo from the ⋮ menu; falls back to the default silhouette
+- [ ] Edit name / username / bio / location and save
+- [ ] Try a username that already exists — must say "Username already taken", not a generic failure
+- [ ] Reopen the edit modal; fields are repopulated from the saved profile *(the modal owns its own field state now, not the page)*
+
+**Create a match** — four step components, submit behind `matchService.createWithTeams`
+- [ ] Walk all four steps; progress dots and "Step N of 4" track correctly
+- [ ] Continue with no sport selected shows an error
+- [ ] Continue with empty title/location shows field errors
+- [ ] Step 3 rejects `31/02/2027`, a past date, and a date more than a year ahead
+- [ ] Step 4 rejects min rating greater than max rating
+- [ ] After creating, check Supabase for **all three**: the `matches` row, **both** `match_teams` rows, and your `match_participants` row. A partial result is MD-19/MD-20 territory.
+- [ ] The "⚡ Fill: 1 min test" button and the 1-minute duration appear in `npm run dev` and are **absent** from a production build (MD-09)
+
+**Join / leave with squad spots** — `participantService`, occupancy maths in `features/matches/lib/occupancy.ts`
+- [ ] Second account joins; counter and team slots update
+- [ ] Join while reserving extra spots on your own team; the count includes them
+- [ ] Use "+ Squad" to reserve spots on the **opponent** team as well
+- [ ] Reopen "+ Squad" — the steppers start from what you already hold, not from 1 *(the panel re-reads props each time it opens)*
+- [ ] Fill one team completely; the other account can no longer pick that side
+- [ ] Leave the match — **all** reserved spots release and `current_players` returns to the correct number (MD-01)
+- [ ] A full upcoming match vanishes from Home for non-participants but stays visible to players in it (MD-03)
+
+**Private matches**
+- [ ] Open one as a non-participant → "Enter Invite Code"
+- [ ] A wrong code is rejected; the correct one unlocks the join panel
+- [ ] Share to a friend, then join from the notification — the link carries `?code=`
+
+**Friends** — `PlayerSearch` / `usePlayerSearch` / `useFriendActions` are now shared by two pages
+- [ ] Search on `/friends` → Find People **and** on `/friends/invite`; both must behave identically
+- [ ] Send a request; the other account's Navbar badge updates live
+- [ ] Accept, then remove the friend
+- [ ] Buttons show the right state per person: Add / Pending / Accept / Friends
+- [ ] Search a term containing `,` `(` `)` or an apostrophe — known bug MD-05, expect no results
+
+**Notifications** — row extracted, routing is now a per-type table
+- [ ] Each type navigates correctly: friend request → `/friends`; match invite → the match; match completed → the match; "did it happen" → the match
+- [ ] A `result_disputed` notification does nothing on click — known bug MD-06
+- [ ] Mark read, mark unread, dismiss, Mark all read, Clear read, Clear all
+
+**Past match: result and rating** — `MatchResultSection` and `features/rate/`
+- [ ] Creator sees "Did this match happen?" and can answer either way
+- [ ] Submit a result; the other account sees it and can Accept or Dispute
+- [ ] Dispute with a counter score; the first account can Accept or Reject
+- [ ] Rate players; scores save, and **reloading the page restores them** *(resume path moved to `ratingService.listSubmittedScores`)*
+- [ ] "Done" only enables once every assigned player is rated or skipped
+- [ ] Revisiting after Done shows "Ratings submitted"
+- [ ] Check `player_ratings` actually moved for a rated player
+
+**Confirm dialogs** (MD-23) — all three must show the styled modal, never a browser popup
+- [ ] Leave match
+- [ ] Cancel match, as creator
+- [ ] "No, it didn't" on the match-happened prompt
+
+**Feeds**
+- [ ] Home and Discover show the same matches for the same filters *(they share `MatchGrid` and `filterVisibleMatches` now)*
+- [ ] Sport filter chips work on both
+- [ ] The History toggle switches to past matches
+- [ ] Discover's text search matches title, location and venue name
+- [ ] A full match's card reads "Full" in red, not "0 spots" in orange (MD-31)
+
+**Venue account**
+- [ ] Log in as a `venue` account; `/venues/dashboard` loads
+- [ ] A `player` account is blocked from it
+- [ ] Confirm/decline a booking — needs a `bookings` row inserted by hand, since that table is empty and has no UI (MD-13)
+
+#### D · Deliberately left broken
+
+Not regressions from the restructure. These are tracked and were intentionally not fixed inside refactor commits, to keep those commits reviewable: **MD-05** (search filter), **MD-06** (disputed notification click), **MD-07** (registration error handling), **MD-08** (reset link while logged in), **MD-11** (cancelled matches in Recent Matches), **MD-19** (swallowed errors), **MD-20** (non-atomic spot updates), **MD-24** (result channel always subscribes).
+
 
 ### MD-01 · Leaving a match doesn't release opponent-side reserved spots — ✅ Fixed
 **File:** `web/app/(app)/matches/[id]/page.tsx` (`handleLeave`)
