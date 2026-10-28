@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { Notification } from '../types';
+import { createNotificationService } from '../services';
 
 interface NotificationState {
   notifications: Notification[];
@@ -15,30 +16,26 @@ interface NotificationState {
   clearRead: (userId: string) => Promise<void>;
 }
 
-export const createNotificationStore = (supabase: SupabaseClient) =>
-  create<NotificationState>((set, get) => ({
+export const createNotificationStore = (supabase: SupabaseClient) => {
+  const notifications = createNotificationService(supabase);
+
+  return create<NotificationState>((set) => ({
     notifications: [],
     unreadCount: 0,
     loading: false,
 
     fetchNotifications: async (userId: string) => {
       set({ loading: true });
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      const notifications = data ?? [];
+      const rows = await notifications.list(userId);
       set({
-        notifications,
-        unreadCount: notifications.filter((n) => !n.read).length,
+        notifications: rows,
+        unreadCount: rows.filter((n) => !n.read).length,
         loading: false,
       });
     },
 
     markAsRead: async (id: string) => {
-      const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+      const { error } = await notifications.setRead(id, true);
       if (error) return;
       set((state) => ({
         notifications: state.notifications.map((n) =>
@@ -49,7 +46,7 @@ export const createNotificationStore = (supabase: SupabaseClient) =>
     },
 
     markAsUnread: async (id: string) => {
-      const { error } = await supabase.from('notifications').update({ read: false }).eq('id', id);
+      const { error } = await notifications.setRead(id, false);
       if (error) return;
       set((state) => {
         const target = state.notifications.find((n) => n.id === id);
@@ -64,23 +61,24 @@ export const createNotificationStore = (supabase: SupabaseClient) =>
     },
 
     deleteNotification: async (id: string) => {
-      const { error } = await supabase.from('notifications').delete().eq('id', id);
+      const { error } = await notifications.remove(id);
       if (error) return;
       set((state) => {
-        const n = state.notifications.find((n) => n.id === id);
+        const removed = state.notifications.find((n) => n.id === id);
         return {
           notifications: state.notifications.filter((n) => n.id !== id),
-          unreadCount: n && !n.read ? Math.max(0, state.unreadCount - 1) : state.unreadCount,
+          unreadCount:
+            removed && !removed.read
+              ? Math.max(0, state.unreadCount - 1)
+              : state.unreadCount,
         };
       });
     },
 
     markAllAsRead: async (userId: string) => {
-      await supabase
-        .from('notifications')
-        .update({ read: true })
-        .eq('user_id', userId)
-        .eq('read', false);
+      // MD-19: the error is deliberately ignored here to preserve existing
+      // behaviour — local state is updated even if the DB update failed.
+      await notifications.markAllRead(userId);
       set((state) => ({
         notifications: state.notifications.map((n) => ({ ...n, read: true })),
         unreadCount: 0,
@@ -88,20 +86,17 @@ export const createNotificationStore = (supabase: SupabaseClient) =>
     },
 
     clearAll: async (userId: string) => {
-      const { error } = await supabase.from('notifications').delete().eq('user_id', userId);
+      const { error } = await notifications.clearAll(userId);
       if (error) return;
       set({ notifications: [], unreadCount: 0 });
     },
 
     clearRead: async (userId: string) => {
-      const { error } = await supabase
-        .from('notifications')
-        .delete()
-        .eq('user_id', userId)
-        .eq('read', true);
+      const { error } = await notifications.clearRead(userId);
       if (error) return;
       set((state) => ({
         notifications: state.notifications.filter((n) => !n.read),
       }));
     },
   }));
+};

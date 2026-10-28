@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { useAuthStore } from '@/stores/authStore';
-import { supabase } from '@/lib/supabase/client';
+import { venueService } from '@/services';
 import { Booking } from '@matchd/shared/types';
 import { AccountType, BookingStatus } from '@matchd/shared/enums';
 import { Badge } from '@/components/ui/Badge';
@@ -23,20 +23,15 @@ export default function VenueDashboardPage() {
   const fetchBookings = async () => {
     if (!user) return;
     setLoading(true);
-    const { data: venue } = await supabase.from('venues').select('id').eq('owner_id', user.id).single();
-    if (!venue) { setLoading(false); return; }
+    const venueId = await venueService.getIdByOwner(user.id);
+    if (!venueId) { setLoading(false); return; }
 
-    const { data } = await supabase
-      .from('bookings')
-      .select('*, matches(*), profiles:booked_by(*)')
-      .eq('venue_id', venue.id)
-      .order('starts_at', { ascending: true });
-    setBookings(data ?? []);
+    setBookings(await venueService.listBookings(venueId));
     setLoading(false);
   };
 
   const updateStatus = async (id: string, status: BookingStatus.Confirmed | BookingStatus.Cancelled) => {
-    const { error } = await supabase.from('bookings').update({ status }).eq('id', id);
+    const { error } = await venueService.updateBookingStatus(id, status);
     if (error) { toast.error('Failed to update booking'); return; }
     toast.success(`Booking ${status}`);
     fetchBookings();

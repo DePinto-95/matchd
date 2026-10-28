@@ -7,7 +7,7 @@ import { MoreVertical, Camera, Users, UserPlus, UserCircle2 } from 'lucide-react
 import { useAuthStore } from '@/stores/authStore';
 import { useFriendStore } from '@/stores/friendStore';
 import { useProfile } from '@/hooks/useProfile';
-import { supabase } from '@/lib/supabase/client';
+import { profileService, storageService } from '@/services';
 import { SPORTS } from '@matchd/shared/constants/sports';
 import { getRatingColor } from '@matchd/shared/constants/theme';
 import { Avatar } from '@/components/ui/Avatar';
@@ -57,11 +57,8 @@ export default function ProfilePage() {
   const handleRemoveAvatar = async () => {
     if (!user) return;
     setUploading(true);
-    const { data: files } = await supabase.storage.from('avatars').list(user.id);
-    if (files?.length) {
-      await supabase.storage.from('avatars').remove(files.map(f => `${user.id}/${f.name}`));
-    }
-    await supabase.from('profiles').update({ avatar_url: null }).eq('id', user.id);
+    await storageService.removeAvatars(user.id);
+    await profileService.setAvatarUrl(user.id, null);
     await Promise.all([fetchProfile(user.id), fetchDetailedProfile(user.id)]);
     toast.success('Photo removed');
     setUploading(false);
@@ -74,20 +71,12 @@ export default function ProfilePage() {
 
     setUploading(true);
     const ext = file.type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
-    const path = `${user.id}/avatar.${ext}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true });
+    const { data: publicUrl, error: uploadError } = await storageService.uploadAvatar(user.id, file, ext);
 
-    if (uploadError) { toast.error('Upload failed: ' + uploadError.message); setUploading(false); return; }
+    if (uploadError || !publicUrl) { toast.error('Upload failed: ' + uploadError?.message); setUploading(false); return; }
 
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
-
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ avatar_url: publicUrl })
-      .eq('id', user.id);
+    const { error: updateError } = await profileService.setAvatarUrl(user.id, publicUrl);
 
     if (updateError) { toast.error('Failed to save photo'); setUploading(false); return; }
 
@@ -100,15 +89,12 @@ export default function ProfilePage() {
     if (!user || !profile) return;
     setSaving(true);
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        full_name: fullName.trim() || null,
-        username: username.trim() || profile.username,
-        bio: bio.trim() || null,
-        location: location.trim() || null,
-      })
-      .eq('id', user.id);
+    const { error } = await profileService.update(user.id, {
+      full_name: fullName.trim() || null,
+      username: username.trim() || profile.username,
+      bio: bio.trim() || null,
+      location: location.trim() || null,
+    });
 
     if (error?.code === '23505') {
       toast.error('Username already taken');

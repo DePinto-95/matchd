@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Users } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+import { squadService } from '@/services';
 import { Squad } from '@matchd/shared/types';
 import { Avatar } from '@/components/ui/Avatar';
 import Link from 'next/link';
@@ -15,15 +15,10 @@ export default function SquadPage({ params }: { params: Promise<{ id: string }> 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from('squads')
-      .select('*, squad_members(*, profiles(*))')
-      .eq('id', id)
-      .single()
-      .then(({ data }) => {
-        setSquad(data);
-        setLoading(false);
-      });
+    squadService.getById(id).then((data) => {
+      setSquad(data);
+      setLoading(false);
+    });
   }, [id]);
 
   if (loading) {

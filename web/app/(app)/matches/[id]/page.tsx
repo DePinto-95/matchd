@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { MapPin, Clock, Users, Share2, ChevronLeft, Star, Lock, X, Trophy, AlertCircle, CheckCircle, HelpCircle } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+import { matchService, notificationService, participantService, ratingService } from '@/services';
 import { useAuthStore } from '@/stores/authStore';
 import { useMatchStore } from '@/stores/matchStore';
 import { useFriendStore } from '@/stores/friendStore';
@@ -136,16 +136,14 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       setUpdatingSquad(false);
       return;
     }
-    const { error } = await supabase
-      .from('match_participants')
-      .update({ extra_spots: newExtraSpots, extra_spots_opponent: newOpponentSpots })
-      .eq('match_id', match.id)
-      .eq('player_id', user.id);
+    const { error } = await participantService.updateHeldSpots(
+      match.id,
+      user.id,
+      newExtraSpots,
+      newOpponentSpots,
+      myDelta + oppDelta
+    );
     if (error) { toast.error(error.message); setUpdatingSquad(false); return; }
-    const totalDelta = myDelta + oppDelta;
-    if (totalDelta !== 0) {
-      await supabase.rpc('adjust_match_player_count', { p_match_id: match.id, p_delta: totalDelta });
-    }
     const parts = [
       newExtraSpots > 0 ? `${newExtraSpots} on your team` : '',
       newOpponentSpots > 0 ? `${newOpponentSpots} on opponent team` : '',
@@ -160,14 +158,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
     if (!match || !user || !selectedSide) return;
     setJoining(true);
 
-    const { data: userRating } = await supabase
-      .from('player_ratings')
-      .select('rating')
-      .eq('player_id', user.id)
-      .eq('sport', match.sport)
-      .single();
-
-    const rating = userRating?.rating ?? 2.0;
+    const rating = await ratingService.getForSport(user.id, match.sport);
     if (rating < match.min_rating || rating > match.max_rating) {
       toast.error(`This match requires a rating between ${match.min_rating} and ${match.max_rating}. Yours: ${rating.toFixed(1)}`);
       setJoining(false);
@@ -186,23 +177,16 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
 
     const extraSpots = squadSpots - 1;
 
-    const { error } = await supabase.from('match_participants').insert({
-      match_id: match.id,
-      player_id: user.id,
-      team_id: targetTeam?.id ?? null,
-      status: ParticipantStatus.Confirmed,
-      extra_spots: extraSpots,
+    const { error } = await participantService.join({
+      matchId: match.id,
+      playerId: user.id,
+      teamId: targetTeam?.id ?? null,
+      extraSpots,
     });
 
     if (error) { toast.error(error.message); setJoining(false); return; }
 
-    // The DB trigger already added 1 to current_players for the INSERT.
-    // Call the RPC to add the extra reserved spots to the count.
     if (extraSpots > 0) {
-      await supabase.rpc('adjust_match_player_count', {
-        p_match_id: match.id,
-        p_delta: extraSpots,
-      });
       toast.success(`Joined and reserved ${extraSpots} extra spot(s) for your squad!`);
     } else {
       toast.success('You joined the match!');
@@ -225,19 +209,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       (participantRow as { extra_spots?: number; extra_spots_opponent?: number }) ?? {};
     const totalExtraSpots = extraSpots + extraSpotsOpponent;
 
-    await supabase
-      .from('match_participants')
-      .delete()
-      .eq('match_id', match.id)
-      .eq('player_id', user.id);
-
-    // The trigger subtracts 1 for the DELETE; subtract extra spots (own + opponent side) too
-    if (totalExtraSpots > 0) {
-      await supabase.rpc('adjust_match_player_count', {
-        p_match_id: match.id,
-        p_delta: -totalExtraSpots,
-      });
-    }
+    await participantService.leave(match.id, user.id, totalExtraSpots);
 
     toast.success('You left the match — all your reserved spots were released');
     loadMatch();
@@ -246,15 +218,15 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const handleCancelMatch = async () => {
     if (!match) return;
     if (!confirm('This will cancel the match for all participants. Continue?')) return;
-    await supabase.from('matches').update({ status: MatchStatus.Cancelled }).eq('id', match.id);
+    await matchService.updateStatus(match.id, MatchStatus.Cancelled);
     toast.success('Match cancelled');
     router.push('/');
   };
 
   const handleConfirmMatchHappened = async () => {
     if (!match) return;
-    await supabase.from('matches').update({ status: MatchStatus.Completed }).eq('id', match.id);
-    await supabase.rpc('notify_match_completion', { p_match_id: match.id });
+    await matchService.updateStatus(match.id, MatchStatus.Completed);
+    await matchService.notifyCompletion(match.id);
     toast.success('Match confirmed! Players will be notified to rate and report the result.');
     loadMatch();
   };
@@ -262,7 +234,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const handleConfirmMatchDidntHappen = async () => {
     if (!match) return;
     if (!confirm('This will cancel the match for all participants. Continue?')) return;
-    await supabase.from('matches').update({ status: MatchStatus.Cancelled }).eq('id', match.id);
+    await matchService.updateStatus(match.id, MatchStatus.Cancelled);
     toast.success('Match marked as not happened.');
     router.push('/');
   };
@@ -379,13 +351,12 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
     if (isNaN(h) || isNaN(a)) { toast.error('Enter valid scores'); return; }
     const { ok, error } = await disputeResult(result.id, user.id, h, a, deriveWinner(disputeHomeScore, disputeAwayScore));
     if (!ok) { toast.error(error ?? 'Failed to dispute'); return; }
-    await supabase.from('notifications').insert({
+    await notificationService.create({
       user_id: result.submitted_by,
       type: NotificationType.ResultDisputed,
       title: 'Your result was disputed',
       body: `Your reported score for "${match.title}" was disputed. Review and respond.`,
       data: { match_id: match.id, sport: match.sport },
-      read: false,
     });
     toast.success('Counter-result submitted');
     setDisputePanelOpen(false);

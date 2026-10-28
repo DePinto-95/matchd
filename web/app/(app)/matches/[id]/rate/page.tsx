@@ -10,7 +10,7 @@ import { getReviewAssignment } from '@/lib/reviewAssignment';
 import { Match, MatchParticipant } from '@matchd/shared/types';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { supabase } from '@/lib/supabase/client';
+import { participantService, ratingService } from '@/services';
 import { isReviewWindowClosed, REVIEW_WINDOW_DAYS } from '@matchd/shared/lib/helpers';
 import { toast } from 'sonner';
 
@@ -33,7 +33,7 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
 
   useEffect(() => { loadMatch(); }, [loadMatch]);
 
-  const { submitRating, submitting } = useRatings(id, match?.sport ?? '');
+  const { submitRating, submitting } = useRatings(id, match?.sport);
 
   const myRow = match?.match_participants?.find((p) => p.player_id === user?.id);
 
@@ -60,12 +60,8 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
   // Resume: load any ratings this user already submitted for this match
   useEffect(() => {
     if (!user?.id) return;
-    supabase
-      .from('match_ratings')
-      .select('rated_player_id, score')
-      .eq('match_id', id)
-      .eq('rater_id', user.id)
-      .then(({ data }) => {
+    ratingService.listSubmittedScores(id, user.id)
+      .then((data) => {
         if (!data?.length) return;
         setScores((prev) => {
           const loaded: Record<string, number> = {};
@@ -103,11 +99,7 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
   const handleDone = async () => {
     if (!user) return;
     setSubmittingDone(true);
-    await supabase
-      .from('match_participants')
-      .update({ rating_submitted: true })
-      .eq('match_id', id)
-      .eq('player_id', user.id);
+    await participantService.markRatingSubmitted(id, user.id);
     setSubmittingDone(false);
     router.push('/');
   };

@@ -1,57 +1,17 @@
 import { useEffect } from 'react';
-import { supabase } from '@/lib/supabase/client';
+import { realtimeService } from '@/services';
 
 export const useMatchRealtime = (matchId: string, onUpdate: () => void) => {
-  useEffect(() => {
-    const channel = supabase
-      .channel(`match:${matchId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'match_participants',
-          filter: `match_id=eq.${matchId}`,
-        },
-        onUpdate
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'matches',
-          filter: `id=eq.${matchId}`,
-        },
-        onUpdate
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [matchId, onUpdate]);
+  useEffect(() => realtimeService.subscribeToMatch(matchId, onUpdate), [matchId, onUpdate]);
 };
 
+/**
+ * Only call this once per session — it lives in the Navbar. Calling it from a
+ * page as well makes Supabase throw a duplicate-channel error.
+ */
 export const useNotificationRealtime = (userId: string, onNew: () => void) => {
   useEffect(() => {
     if (!userId) return;
-    const channel = supabase
-      .channel(`notifications:${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        onNew
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return realtimeService.subscribeToNotifications(userId, onNew);
   }, [userId, onNew]);
 };

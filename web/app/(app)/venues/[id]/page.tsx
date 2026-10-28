@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { MapPin, Phone, Mail, ChevronLeft, CheckCircle } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+import { venueService } from '@/services';
 import { Venue } from '@matchd/shared/types';
 import { SPORTS } from '@matchd/shared/constants/sports';
 import { Badge } from '@/components/ui/Badge';
@@ -15,7 +15,7 @@ export default function VenuePage({ params }: { params: Promise<{ id: string }> 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from('venues').select('*').eq('id', id).single().then(({ data }) => {
+    venueService.getById(id).then((data) => {
       setVenue(data);
       setLoading(false);
     });

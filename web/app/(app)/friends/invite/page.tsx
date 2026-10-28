@@ -7,7 +7,7 @@ import { ChevronLeft, Search, UserPlus, UserCheck, Clock, Share2 } from 'lucide-
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { useFriendStore } from '@/stores/friendStore';
-import { supabase } from '@/lib/supabase/client';
+import { profileService } from '@/services';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import type { Profile } from '@matchd/shared/types';
@@ -33,13 +33,7 @@ export default function InviteFriendsPage() {
     if (!search.trim()) { setResults([]); return; }
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .or(`username.ilike.%${search}%,full_name.ilike.%${search}%`)
-        .neq('id', profile?.id ?? '')
-        .limit(20);
-      setResults((data as Profile[]) ?? []);
+      setResults(await profileService.search(search, profile?.id ?? ''));
       setSearching(false);
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };

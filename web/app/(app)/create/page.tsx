@@ -7,11 +7,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { ChevronLeft, X } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+import { matchService } from '@/services';
 import { useAuthStore } from '@/stores/authStore';
 import { SPORTS, SPORT_LIST } from '@matchd/shared/constants/sports';
-import { generateInviteCode, withTimeout, TimeoutError } from '@matchd/shared/lib/helpers';
-import { MatchStatus, ParticipantStatus, SportType, TeamSide } from '@matchd/shared/enums';
+import { generateInviteCode, TimeoutError } from '@matchd/shared/lib/helpers';
+import { SportType } from '@matchd/shared/enums';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DatePicker } from '@/components/ui/DatePicker';
@@ -113,59 +113,25 @@ export default function CreateMatchPage() {
     try {
       const inviteCode = isPrivate ? generateInviteCode() : null;
 
-      const { data: match, error } = await withTimeout(
-        supabase
-          .from('matches')
-          .insert({
-            creator_id: user.id,
-            sport,
-            title: data.title,
-            description: data.description ?? null,
-            location_name: data.location_name,
-            scheduled_at: scheduledAt,
-            duration_minutes: duration,
-            max_players: maxPlayers,
-            team_size: teamSize,
-            min_rating: minR,
-            max_rating: maxR,
-            is_private: isPrivate,
-            invite_code: inviteCode,
-            status: MatchStatus.Open,
-          })
-          .select()
-          .single(),
-        15000
-      );
+      const { data: match, error } = await matchService.createWithTeams({
+        creator_id: user.id,
+        sport,
+        title: data.title,
+        description: data.description ?? null,
+        location_name: data.location_name,
+        scheduled_at: scheduledAt,
+        duration_minutes: duration,
+        max_players: maxPlayers,
+        team_size: teamSize,
+        min_rating: minR,
+        max_rating: maxR,
+        is_private: isPrivate,
+        invite_code: inviteCode,
+      });
 
       if (error || !match) {
         toast.error('Could not create match. Please try again.');
         return;
-      }
-
-      await withTimeout(
-        supabase.from('match_teams').insert([
-          { match_id: match.id, side: TeamSide.Home, name: 'Home' },
-          { match_id: match.id, side: TeamSide.Away, name: 'Away' },
-        ]),
-        15000
-      );
-
-      const { data: teams } = await withTimeout(
-        supabase.from('match_teams').select('id, side').eq('match_id', match.id),
-        15000
-      );
-
-      const homeTeam = teams?.find((t: { side: TeamSide }) => t.side === TeamSide.Home);
-      if (homeTeam) {
-        await withTimeout(
-          supabase.from('match_participants').insert({
-            match_id: match.id,
-            player_id: user.id,
-            team_id: homeTeam.id,
-            status: ParticipantStatus.Confirmed,
-          }),
-          15000
-        );
       }
 
       toast.success('Match created!');

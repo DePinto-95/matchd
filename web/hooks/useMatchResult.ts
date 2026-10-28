@@ -1,7 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
-import { supabase } from '@/lib/supabase/client';
 import { MatchResult } from '@matchd/shared/types';
-import { MatchResultStatus, MatchWinnerSide, TeamSide } from '@matchd/shared/enums';
+import { MatchWinnerSide, TeamSide } from '@matchd/shared/enums';
+import { matchResultService, realtimeService } from '@/services';
+
+/** Wraps a service call that returns the updated row, keeping local state in sync. */
+type ResultAction = () => Promise<{ data: MatchResult | null; error: { message: string } | null }>;
 
 export const useMatchResult = (matchId: string) => {
   const [result, setResult] = useState<MatchResult | null>(null);
@@ -10,141 +13,24 @@ export const useMatchResult = (matchId: string) => {
 
   const fetchResult = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('match_results')
-      .select('*')
-      .eq('match_id', matchId)
-      .maybeSingle();
-    setResult(data ?? null);
+    const data = await matchResultService.getByMatch(matchId);
+    setResult(data);
     setLoading(false);
-    return data as MatchResult | null;
+    return data;
   }, [matchId]);
 
-  // Realtime: refresh when the other team accepts, disputes, or rejects
-  useEffect(() => {
-    const channel = supabase
-      .channel(`match_result:${matchId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'match_results',
-          filter: `match_id=eq.${matchId}`,
-        },
-        (payload) => setResult(payload.new as MatchResult),
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'match_results',
-          filter: `match_id=eq.${matchId}`,
-        },
-        (payload) => setResult(payload.new as MatchResult),
-      )
-      .subscribe();
+  // Refresh when the other team accepts, disputes, or rejects
+  useEffect(
+    () => realtimeService.subscribeToMatchResult(matchId, setResult),
+    [matchId]
+  );
 
-    return () => { supabase.removeChannel(channel); };
-  }, [matchId]);
-
-  const submitResult = async (
-    submittedBy: string,
-    submitterTeam: TeamSide,
-    homeScore: number,
-    awayScore: number,
-    winnerSide: MatchWinnerSide,
-  ) => {
+  const run = async (action: ResultAction) => {
     setSubmitting(true);
-    const { data, error } = await supabase
-      .from('match_results')
-      .insert({
-        match_id: matchId,
-        submitted_by: submittedBy,
-        submitter_team: submitterTeam,
-        home_score: homeScore,
-        away_score: awayScore,
-        winner_side: winnerSide,
-        status: MatchResultStatus.Submitted,
-      })
-      .select()
-      .single();
+    const { data, error } = await action();
     setSubmitting(false);
     if (error) return { ok: false, error: error.message };
-    setResult(data as MatchResult);
-    return { ok: true };
-  };
-
-  // Team B accepts Team A's submission → CONFIRMED
-  const acceptResult = async (resultId: string) => {
-    setSubmitting(true);
-    const { data, error } = await supabase
-      .from('match_results')
-      .update({ status: MatchResultStatus.Confirmed })
-      .eq('id', resultId)
-      .select()
-      .single();
-    setSubmitting(false);
-    if (error) return { ok: false, error: error.message };
-    setResult(data as MatchResult);
-    return { ok: true };
-  };
-
-  // Team B rejects and submits counter → DISPUTED
-  const disputeResult = async (
-    resultId: string,
-    counterBy: string,
-    counterHome: number,
-    counterAway: number,
-    counterWinner: MatchWinnerSide,
-  ) => {
-    setSubmitting(true);
-    const { data, error } = await supabase
-      .from('match_results')
-      .update({
-        status: MatchResultStatus.Disputed,
-        counter_submitted_by: counterBy,
-        counter_home_score: counterHome,
-        counter_away_score: counterAway,
-        counter_winner_side: counterWinner,
-      })
-      .eq('id', resultId)
-      .select()
-      .single();
-    setSubmitting(false);
-    if (error) return { ok: false, error: error.message };
-    setResult(data as MatchResult);
-    return { ok: true };
-  };
-
-  // Team A accepts counter → CONFIRMED (counter values used by DB trigger)
-  const acceptCounter = async (resultId: string) => {
-    setSubmitting(true);
-    const { data, error } = await supabase
-      .from('match_results')
-      .update({ status: MatchResultStatus.Confirmed })
-      .eq('id', resultId)
-      .select()
-      .single();
-    setSubmitting(false);
-    if (error) return { ok: false, error: error.message };
-    setResult(data as MatchResult);
-    return { ok: true };
-  };
-
-  // Team A rejects counter → ABANDONED (peer reviews only, no Elo)
-  const rejectCounter = async (resultId: string) => {
-    setSubmitting(true);
-    const { data, error } = await supabase
-      .from('match_results')
-      .update({ status: MatchResultStatus.Abandoned })
-      .eq('id', resultId)
-      .select()
-      .single();
-    setSubmitting(false);
-    if (error) return { ok: false, error: error.message };
-    setResult(data as MatchResult);
+    setResult(data);
     return { ok: true };
   };
 
@@ -153,10 +39,44 @@ export const useMatchResult = (matchId: string) => {
     loading,
     submitting,
     fetchResult,
-    submitResult,
-    acceptResult,
-    disputeResult,
-    acceptCounter,
-    rejectCounter,
+
+    submitResult: (
+      submittedBy: string,
+      submitterTeam: TeamSide,
+      homeScore: number,
+      awayScore: number,
+      winnerSide: MatchWinnerSide
+    ) =>
+      run(() =>
+        matchResultService.submit(
+          matchId,
+          submittedBy,
+          submitterTeam,
+          homeScore,
+          awayScore,
+          winnerSide
+        )
+      ),
+
+    /** Team B accepts Team A's submission → CONFIRMED */
+    acceptResult: (resultId: string) => run(() => matchResultService.confirm(resultId)),
+
+    /** Team B rejects and submits a counter → DISPUTED */
+    disputeResult: (
+      resultId: string,
+      counterBy: string,
+      counterHome: number,
+      counterAway: number,
+      counterWinner: MatchWinnerSide
+    ) =>
+      run(() =>
+        matchResultService.dispute(resultId, counterBy, counterHome, counterAway, counterWinner)
+      ),
+
+    /** Team A accepts the counter → CONFIRMED (counter values used by DB trigger) */
+    acceptCounter: (resultId: string) => run(() => matchResultService.confirm(resultId)),
+
+    /** Team A rejects the counter → ABANDONED (peer reviews only, no Elo) */
+    rejectCounter: (resultId: string) => run(() => matchResultService.abandon(resultId)),
   };
 };

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
 import { Profile } from '../types';
-import { AccountType } from '../enums';
+import { createAuthService, createProfileService } from '../services';
 
 interface AuthState {
   session: Session | null;
@@ -17,8 +17,11 @@ interface AuthState {
   initialize: () => Promise<() => void>;
 }
 
-export const createAuthStore = (supabase: SupabaseClient) =>
-  create<AuthState>((set, get) => ({
+export const createAuthStore = (supabase: SupabaseClient) => {
+  const auth = createAuthService(supabase);
+  const profiles = createProfileService(supabase);
+
+  return create<AuthState>((set, get) => ({
     session: null,
     user: null,
     profile: null,
@@ -34,43 +37,34 @@ export const createAuthStore = (supabase: SupabaseClient) =>
 
     fetchProfile: async (userId: string) => {
       set({ profileLoading: true });
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      const existing = await profiles.getById(userId);
 
-      if (data) {
-        set({ profile: data, profileLoading: false });
+      if (existing) {
+        set({ profile: existing, profileLoading: false });
         return;
       }
 
       // No profile yet — auto-create as player
-      const { data: authUser } = await supabase.auth.getUser();
+      const { data: authUser } = await auth.getUser();
       const username =
         authUser.user?.user_metadata?.username ?? `user_${userId.slice(0, 6)}`;
-      const { data: newProfile } = await supabase
-        .from('profiles')
-        .upsert({ id: userId, account_type: AccountType.Player, username })
-        .select()
-        .single();
-      set({ profile: newProfile ?? null, profileLoading: false });
+      set({ profile: await profiles.createDefault(userId, username), profileLoading: false });
     },
 
     signOut: async () => {
-      await supabase.auth.signOut();
+      await auth.signOut();
       set({ session: null, user: null, profile: null });
     },
 
     initialize: async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await auth.getSession();
       set({ session, user: session?.user ?? null });
       if (session?.user) {
         await get().fetchProfile(session.user.id);
       }
       set({ loading: false, initialized: true });
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      const { data: { subscription } } = auth.onAuthStateChange(
         async (_event, session) => {
           set({ session, user: session?.user ?? null });
           if (session?.user) {
@@ -84,3 +78,4 @@ export const createAuthStore = (supabase: SupabaseClient) =>
       return () => subscription.unsubscribe();
     },
   }));
+};

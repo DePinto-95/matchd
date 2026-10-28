@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase/client';
+import { SportType } from '@matchd/shared/enums';
+import { ratingService } from '@/services';
 
-export const useRatings = (matchId: string, sport: string) => {
+/** `sport` is undefined until the match has loaded; submitting is a no-op until then. */
+export const useRatings = (matchId: string, sport: SportType | undefined) => {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<string[]>([]);
 
@@ -11,22 +13,23 @@ export const useRatings = (matchId: string, sport: string) => {
     score: number,
     comment?: string
   ) => {
+    if (!sport) return false;
     setSubmitting(true);
-    const { error } = await supabase.from('match_ratings').upsert({
-      match_id: matchId,
-      rater_id: raterId,
-      rated_player_id: ratedPlayerId,
+    const { error } = await ratingService.submitScore(
+      matchId,
+      raterId,
+      ratedPlayerId,
       sport,
       score,
-      comment: comment ?? null,
-    }, { onConflict: 'match_id,rater_id,rated_player_id' });
-    if (error?.code || error?.message) {
+      comment
+    );
+    if (error) {
       console.error('match_ratings insert failed:', error.message, error.code);
     } else {
       setSubmitted((prev) => [...prev, ratedPlayerId]);
     }
     setSubmitting(false);
-    return !(error?.code || error?.message);
+    return !error;
   };
 
   const hasRated = (playerId: string) => submitted.includes(playerId);

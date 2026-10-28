@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Zap } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+import { authService } from '@/services';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
@@ -27,9 +27,10 @@ export default function ForgotPasswordPage() {
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
-    });
+    const { error } = await authService.resetPasswordForEmail(
+      data.email,
+      `${window.location.origin}/auth/callback?next=/auth/reset-password`
+    );
 
     if (error) {
       toast.error(error.message);

@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Zap, Users, Building2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+import { authService, profileService } from '@/services';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AccountType } from '@matchd/shared/enums';
@@ -35,13 +35,12 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
-    const { data: authData, error } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-      options: {
-        data: { username: data.username, account_type: data.accountType },
-      },
-    });
+    const { data: authData, error } = await authService.signUp(
+      data.email,
+      data.password,
+      data.username,
+      data.accountType
+    );
 
     if (error) {
       toast.error(error.message);
@@ -50,11 +49,7 @@ export default function RegisterPage() {
     }
 
     if (authData.user) {
-      await supabase.from('profiles').upsert({
-        id: authData.user.id,
-        username: data.username,
-        account_type: data.accountType,
-      });
+      await profileService.upsert(authData.user.id, data.username, data.accountType);
     }
 
     toast.success('Account created! Welcome to MatchD.');

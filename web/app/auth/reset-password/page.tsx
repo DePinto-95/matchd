@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Zap } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+import { authService } from '@/services';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
@@ -31,7 +31,7 @@ export default function ResetPasswordPage() {
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: data.password });
+    const { error } = await authService.updatePassword(data.password);
 
     if (error) {
       toast.error(error.message);
@@ -39,7 +39,7 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    await supabase.auth.signOut();
+    await authService.signOut();
     toast.success('Password updated! Please log in with your new password.');
     router.push('/auth/login');
   };

@@ -37,6 +37,7 @@ npm run build   # build for production
 - `shared/types` — DB/domain TypeScript types, split one file per domain (`match.ts`, `profile.ts`, `friend.ts`, …). `index.ts` re-exports every type *and* every enum, so `@matchd/shared/types` remains a single valid entry point
 - `shared/constants` — `sports.ts`, `theme.ts`
 - `shared/lib/helpers.ts` — pure date/string/formatting helpers
+- `shared/services` — **the data-access layer** (see "Frontend vs backend" below)
 - `shared/stores` — zustand store **factories** (`createAuthStore(supabase)`, `createMatchStore(supabase, options)`, `createNotificationStore(supabase)`). Each app's own `stores/*.ts` is a 2-3 line wrapper that injects its own platform-specific Supabase client (and, for `web`, a `sonner` toast callback) and exports the bound hook.
 
 UI components are **not** shared — every `matchd/components/*` file imports React Native primitives (`View`, `Text`, etc.) directly, which have no DOM equivalent. Sharing components would require adopting a cross-platform UI layer (react-native-web, Tamagui, …); that's a separate decision, not needed while `matchd/` stays reference-only.
@@ -94,6 +95,8 @@ Stores in `stores/`:
 - `notificationStore.ts` — notifications list, `unreadCount`, `fetchNotifications`, `markAsRead`, `deleteNotification`, `markAllAsRead`
 - `friendStore.ts` — `friends`, `pendingIn`, `pendingOut`, `pendingInCount`; actions: `sendRequest`, `acceptRequest`, `declineRequest`, `cancelRequest`, `removeFriend`, `sendMatchInvites`, `reportUser`; `getRelation(userId)` returns a `FriendRelation` discriminated union
 
+All four are 3-8 line wrappers that inject the browser Supabase client (and `sonner` toast callbacks) into a factory from `shared/stores/`.
+
 ### Realtime
 Supabase Realtime subscriptions in `hooks/useRealtime.ts`:
 - `useMatchRealtime(matchId, onUpdate)` — subscribes to `match_participants` and `matches` changes
@@ -113,6 +116,42 @@ Design tokens:
 
 ### Sport Config
 All sport metadata lives in `shared/constants/sports.ts` (imported as `@matchd/shared/constants/sports`). Reference `SPORTS[sport]` everywhere — never hardcode sport-specific values inline.
+
+## Frontend vs backend
+
+There is no separate API server, but there *is* a hard boundary in the code:
+
+> **Only files under `shared/services/` may call `supabase.from()`, `.rpc()`, `.storage` or `.auth`.**
+
+Everything else — pages, components, hooks, stores — goes through a service. This is the line between "frontend" (rendering and local state) and "backend" (talking to the database).
+
+```ts
+// ✅ a page or hook
+import { matchService, participantService } from '@/services';
+const match = await matchService.getById(id);
+await participantService.leave(match.id, user.id, heldSpots);
+
+// ❌ never, outside shared/services/
+import { supabase } from '@/lib/supabase/client';
+await supabase.from('matches').select('*');
+```
+
+Each service is a factory taking a Supabase client (`createMatchService(supabase)`), so the same code works for web and for the mobile app, which builds its client differently. `web/services/index.ts` wires every factory to the browser client once and exports ready-to-use singletons — that is the only file importing the client.
+
+Services: `authService`, `profileService`, `matchService`, `participantService`, `matchResultService`, `ratingService`, `friendService`, `notificationService`, `reportService`, `storageService`, `venueService`, `squadService`, `realtimeService`.
+
+Conventions:
+- Reads return the data directly (`Match | null`, `Profile[]`).
+- Writes return `{ error }` (or `{ data, error }`) rather than throwing, because callers surface errors as toasts. The one exception is a timeout, which throws `TimeoutError`.
+- Stores build the services they need internally, so a store never touches Supabase either.
+
+**Two deliberate exceptions**, both server-side auth that runs before any service exists: `web/proxy.ts` and `web/app/auth/callback/route.ts`.
+
+Check the boundary at any time:
+
+```bash
+grep -rn "supabase\.\(from\|rpc\|storage\|auth\)" web/ shared/ --include=*.ts --include=*.tsx | grep -v "shared/services/"
+```
 
 ## Enums
 

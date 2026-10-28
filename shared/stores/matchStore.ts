@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { Match, SportType } from '../types';
-import { MatchStatus } from '../enums';
+import { createMatchService } from '../services';
 
 interface MatchFilters {
   sport: SportType | 'all';
@@ -23,8 +23,13 @@ export interface MatchStoreOptions {
   onError?: (message: string) => void;
 }
 
-export const createMatchStore = (supabase: SupabaseClient, options: MatchStoreOptions = {}) =>
-  create<MatchState>((set, get) => ({
+export const createMatchStore = (
+  supabase: SupabaseClient,
+  options: MatchStoreOptions = {}
+) => {
+  const matches = createMatchService(supabase);
+
+  return create<MatchState>((set, get) => ({
     matches: [],
     loading: false,
     filters: { sport: 'all', city: '', showPast: false },
@@ -34,30 +39,9 @@ export const createMatchStore = (supabase: SupabaseClient, options: MatchStoreOp
 
     fetchMatches: async () => {
       set({ loading: true });
-      const { filters } = get();
+      const { sport, showPast } = get().filters;
 
-      const now = new Date().toISOString();
-
-      let query = supabase
-        .from('matches')
-        .select(`
-          *,
-          profiles:creator_id(id, username, avatar_url, account_type),
-          venues(id, name, city, address),
-          match_participants(id, player_id, team_id, status, extra_spots, extra_spots_opponent, profiles(id, username, avatar_url))
-        `);
-
-      if (filters.showPast) {
-        query = query.lt('scheduled_at', now).order('scheduled_at', { ascending: false });
-      } else {
-        query = query.in('status', [MatchStatus.Open, MatchStatus.Full]).gte('scheduled_at', now).order('scheduled_at', { ascending: true });
-      }
-
-      if (filters.sport !== 'all') {
-        query = query.eq('sport', filters.sport);
-      }
-
-      const { data, error } = await query;
+      const { data, error } = await matches.list({ sport, showPast });
       if (error) {
         options.onError?.('Could not load matches. Please try again.');
         set({ loading: false });
@@ -66,25 +50,8 @@ export const createMatchStore = (supabase: SupabaseClient, options: MatchStoreOp
       set({ matches: data ?? [], loading: false });
     },
 
-    fetchMatchById: async (id: string) => {
-      const { data } = await supabase
-        .from('matches')
-        .select(`
-          *,
-          profiles:creator_id(id, username, avatar_url, full_name, account_type),
-          venues(id, name, city, address, logo_url, phone),
-          match_teams(id, match_id, side, name),
-          match_participants(
-            id, player_id, team_id, status, joined_at, extra_spots, extra_spots_opponent, rating_submitted,
-            profiles(id, username, avatar_url, full_name)
-          )
-        `)
-        .eq('id', id)
-        .single();
-      return data ?? null;
-    },
+    fetchMatchById: (id: string) => matches.getById(id),
 
-    notifyMatchCompletion: async (matchId: string) => {
-      await supabase.rpc('notify_match_completion', { p_match_id: matchId });
-    },
+    notifyMatchCompletion: (matchId: string) => matches.notifyCompletion(matchId),
   }));
+};
