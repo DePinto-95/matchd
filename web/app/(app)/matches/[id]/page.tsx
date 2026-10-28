@@ -1,917 +1,156 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, use } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
-import { MapPin, Clock, Users, Share2, ChevronLeft, Star, Lock, X, Trophy, AlertCircle, CheckCircle, HelpCircle } from 'lucide-react';
-import { matchService, notificationService, participantService, ratingService } from '@/services';
-import { useAuthStore } from '@/stores/authStore';
-import { useMatchStore } from '@/stores/matchStore';
-import { useFriendStore } from '@/stores/friendStore';
-import { useMatchRealtime } from '@/hooks/useRealtime';
+import { useRouter } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
+import { MatchStatus, TeamSide } from '@matchd/shared/enums';
 import { useMatchResult } from '@/hooks/useMatchResult';
-import { SPORTS } from '@matchd/shared/constants/sports';
-import { formatMatchDate, formatPrice, isMatchPast, isReviewWindowClosed } from '@matchd/shared/lib/helpers';
-import { Match } from '@matchd/shared/types';
-import { MatchResultStatus, MatchStatus, MatchWinnerSide, NotificationType, ParticipantStatus, TeamSide } from '@matchd/shared/enums';
-import { TeamSlots } from '@/components/match/TeamSlots';
-import { Avatar } from '@/components/ui/Avatar';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { useMatchDetail } from '@/features/matches/hooks/useMatchDetail';
+import {
+  InviteCodePanel,
+  JoinPanel,
+  MatchActionBar,
+  MatchCreatorCard,
+  MatchHappenedPrompt,
+  MatchHero,
+  MatchResultSection,
+  MatchTeamsCard,
+  ShareWithFriendsPanel,
+  SquadSpotsPanel,
+} from '@/features/matches/components';
+import { PageLoading } from '@/components/ui/PageLoading';
 
 export default function MatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const { user, profile } = useAuthStore();
-  const { fetchMatchById, notifyMatchCompletion } = useMatchStore();
-  const { friends, fetchFriends, sendMatchInvites } = useFriendStore();
+  const detail = useMatchDetail(id);
+  const { match, loading, user, isPast, isParticipant } = detail;
 
-  const [match, setMatch] = useState<Match | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [joining, setJoining] = useState(false);
+  // Which panel is expanded. The panels own their own inner state.
   const [joinPanelOpen, setJoinPanelOpen] = useState(false);
   const [selectedSide, setSelectedSide] = useState<TeamSide | null>(null);
   const [squadSpots, setSquadSpots] = useState(1);
   const [squadPanelOpen, setSquadPanelOpen] = useState(false);
-  const [newTotalSpots, setNewTotalSpots] = useState(1);
-  const [newOpponentSpots, setNewOpponentSpots] = useState(0);
-  const [updatingSquad, setUpdatingSquad] = useState(false);
   const [sharePanelOpen, setSharePanelOpen] = useState(false);
-  const [selectedFriendIds, setSelectedFriendIds] = useState<Set<string>>(new Set());
-  const [sendingInvites, setSendingInvites] = useState(false);
   const [codePanelOpen, setCodePanelOpen] = useState(false);
-  const [inviteCodeInput, setInviteCodeInput] = useState('');
-  const [codeVerified, setCodeVerified] = useState(false);
 
-  // Result reporting state
-  const [resultPanelOpen, setResultPanelOpen] = useState(false);
-  const [resultHomeScore, setResultHomeScore] = useState('');
-  const [resultAwayScore, setResultAwayScore] = useState('');
-  const [disputeHomeScore, setDisputeHomeScore] = useState('');
-  const [disputeAwayScore, setDisputeAwayScore] = useState('');
-  const [disputePanelOpen, setDisputePanelOpen] = useState(false);
-
-  const { result, loading: resultLoading, submitting: resultSubmitting, fetchResult, submitResult, acceptResult, disputeResult, acceptCounter, rejectCounter } = useMatchResult(id);
-
-  const loadMatch = useCallback(async () => {
-    const data = await fetchMatchById(id);
-    setMatch(data);
-    setLoading(false);
-  }, [id, fetchMatchById]);
-
-  useEffect(() => {
-    loadMatch();
-    if (user?.id) fetchFriends(user.id);
-  }, [loadMatch, user?.id, fetchFriends]);
-  useMatchRealtime(id, loadMatch);
-
-  const isParticipant = match?.match_participants?.some((p) => p.player_id === user?.id);
-
-  // Auto-unlock the join panel when arriving via a match_invite notification's ?code= link.
-  useEffect(() => {
-    if (!match?.is_private || !match.invite_code || codeVerified) return;
-    const code = searchParams.get('code');
-    if (code && code.toUpperCase() === match.invite_code.toUpperCase()) {
-      setCodeVerified(true);
-    }
-  }, [match, searchParams, codeVerified]);
-
-  const notifiedRef = useRef(false);
-  useEffect(() => {
-    if (notifiedRef.current) return;
-    if (!match || !isParticipant || match.rating_notifications_sent) return;
-    if (!isMatchPast(match.scheduled_at, match.duration_minutes)) return;
-    notifiedRef.current = true;
-    notifyMatchCompletion(match.id);
-  }, [match, isParticipant, notifyMatchCompletion]);
-
-  const isCreator = match?.creator_id === user?.id;
-  // Actual occupancy (participants + held extra spots) rather than matches.status,
-  // which can lag behind squad-spot reservations that don't flip status to 'full'.
-  const actualOccupancy = match?.match_participants?.reduce(
-    (sum, p) => sum + 1 + (p.extra_spots ?? 0) + (p.extra_spots_opponent ?? 0),
-    0
-  ) ?? 0;
-  const isFull = match ? actualOccupancy >= match.max_players : false;
-  const isPast = match ? isMatchPast(match.scheduled_at, match.duration_minutes) : false;
-
+  const resultApi = useMatchResult(id);
+  const { fetchResult } = resultApi;
   useEffect(() => {
     if (isPast && isParticipant) fetchResult();
   }, [isPast, isParticipant, fetchResult]);
 
-  const myRow = match?.match_participants?.find((p) => p.player_id === user?.id);
-  const myCurrentExtraSpots = myRow?.extra_spots ?? 0;
-  const myCurrentExtraSpotOpponent = myRow?.extra_spots_opponent ?? 0;
-  const opponentTeamId = match?.match_teams?.find((t) => t.id !== myRow?.team_id)?.id;
-
-  // Occupancy for a team must include held spots: its own participants' extra_spots,
-  // plus extra_spots_opponent held by participants on the other team.
-  const getTeamOccupancy = (teamId?: string | null, otherTeamId?: string | null) => {
-    const teamMembers = match?.match_participants?.filter((p) => p.team_id === teamId) ?? [];
-    const otherMembers = match?.match_participants?.filter((p) => p.team_id === otherTeamId) ?? [];
-    return teamMembers.reduce((sum, p) => sum + 1 + (p.extra_spots ?? 0), 0)
-      + otherMembers.reduce((sum, p) => sum + (p.extra_spots_opponent ?? 0), 0);
-  };
-
-  const myTeamOccupied = getTeamOccupancy(myRow?.team_id, opponentTeamId);
-  const opponentOccupied = getTeamOccupancy(opponentTeamId, myRow?.team_id);
-  const myTeamOpenSlots = (match?.team_size ?? 0) - myTeamOccupied;
-  const opponentOpenSlots = (match?.team_size ?? 0) - opponentOccupied;
-
-  const handleUpdateSquadSpots = async () => {
-    if (!match || !user || !myRow) return;
-    setUpdatingSquad(true);
-    const newExtraSpots = newTotalSpots - 1;
-    const myDelta = newExtraSpots - myCurrentExtraSpots;
-    const oppDelta = newOpponentSpots - myCurrentExtraSpotOpponent;
-    if (myDelta > myTeamOpenSlots) {
-      toast.error(`Only ${myTeamOpenSlots} more spot(s) available on your team.`);
-      setUpdatingSquad(false);
-      return;
-    }
-    if (oppDelta > opponentOpenSlots) {
-      toast.error(`Only ${opponentOpenSlots} more spot(s) available on the opponent team.`);
-      setUpdatingSquad(false);
-      return;
-    }
-    const { error } = await participantService.updateHeldSpots(
-      match.id,
-      user.id,
-      newExtraSpots,
-      newOpponentSpots,
-      myDelta + oppDelta
-    );
-    if (error) { toast.error(error.message); setUpdatingSquad(false); return; }
-    const parts = [
-      newExtraSpots > 0 ? `${newExtraSpots} on your team` : '',
-      newOpponentSpots > 0 ? `${newOpponentSpots} on opponent team` : '',
-    ].filter(Boolean);
-    toast.success(parts.length ? `Reserved: ${parts.join(', ')}` : 'Squad spots updated.');
-    setSquadPanelOpen(false);
-    setUpdatingSquad(false);
-    loadMatch();
-  };
-
-  const handleJoin = async () => {
-    if (!match || !user || !selectedSide) return;
-    setJoining(true);
-
-    const rating = await ratingService.getForSport(user.id, match.sport);
-    if (rating < match.min_rating || rating > match.max_rating) {
-      toast.error(`This match requires a rating between ${match.min_rating} and ${match.max_rating}. Yours: ${rating.toFixed(1)}`);
-      setJoining(false);
-      return;
-    }
-
-    const targetTeam = match.match_teams?.find((t) => t.side === selectedSide);
-    const otherTeam = match.match_teams?.find((t) => t.side !== selectedSide);
-    const currentOnTeam = getTeamOccupancy(targetTeam?.id, otherTeam?.id);
-
-    if (currentOnTeam + squadSpots > match.team_size) {
-      toast.error(`Only ${match.team_size - currentOnTeam} spot(s) left on that team.`);
-      setJoining(false);
-      return;
-    }
-
-    const extraSpots = squadSpots - 1;
-
-    const { error } = await participantService.join({
-      matchId: match.id,
-      playerId: user.id,
-      teamId: targetTeam?.id ?? null,
-      extraSpots,
-    });
-
-    if (error) { toast.error(error.message); setJoining(false); return; }
-
-    if (extraSpots > 0) {
-      toast.success(`Joined and reserved ${extraSpots} extra spot(s) for your squad!`);
-    } else {
-      toast.success('You joined the match!');
-    }
-
+  const closeJoinPanel = () => {
     setJoinPanelOpen(false);
     setSelectedSide(null);
     setSquadSpots(1);
-    setJoining(false);
-    loadMatch();
   };
 
-  const handleLeave = async () => {
-    if (!match || !user) return;
-    if (!confirm('Are you sure you want to leave this match?')) return;
-
-    // Find the participant row to know how many extra spots to release
-    const participantRow = match.match_participants?.find((p) => p.player_id === user.id);
-    const { extra_spots: extraSpots = 0, extra_spots_opponent: extraSpotsOpponent = 0 } =
-      (participantRow as { extra_spots?: number; extra_spots_opponent?: number }) ?? {};
-    const totalExtraSpots = extraSpots + extraSpotsOpponent;
-
-    await participantService.leave(match.id, user.id, totalExtraSpots);
-
-    toast.success('You left the match — all your reserved spots were released');
-    loadMatch();
-  };
-
-  const handleCancelMatch = async () => {
-    if (!match) return;
-    if (!confirm('This will cancel the match for all participants. Continue?')) return;
-    await matchService.updateStatus(match.id, MatchStatus.Cancelled);
-    toast.success('Match cancelled');
-    router.push('/');
-  };
-
-  const handleConfirmMatchHappened = async () => {
-    if (!match) return;
-    await matchService.updateStatus(match.id, MatchStatus.Completed);
-    await matchService.notifyCompletion(match.id);
-    toast.success('Match confirmed! Players will be notified to rate and report the result.');
-    loadMatch();
-  };
-
-  const handleConfirmMatchDidntHappen = async () => {
-    if (!match) return;
-    if (!confirm('This will cancel the match for all participants. Continue?')) return;
-    await matchService.updateStatus(match.id, MatchStatus.Cancelled);
-    toast.success('Match marked as not happened.');
-    router.push('/');
-  };
-
-  const handleShare = () => {
-    if (!match) return;
-    const text = match.is_private && match.invite_code
-      ? `Join my ${SPORTS[match.sport].label} match on MatchD! Code: ${match.invite_code}`
-      : `Check out this match: ${match.title}`;
-    if (navigator.share) {
-      navigator.share({ title: match.title, text });
-    } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast.success('Link copied to clipboard!');
-    }
-  };
-
-  const handleSendToFriends = async () => {
-    if (!match || !profile || selectedFriendIds.size === 0) return;
-    setSendingInvites(true);
-    await sendMatchInvites(profile.username, [...selectedFriendIds], {
-      id: match.id,
-      sport: match.sport,
-      title: match.title,
-      invite_code: match.invite_code,
-    });
-    setSendingInvites(false);
-    setSharePanelOpen(false);
-    setSelectedFriendIds(new Set());
-  };
-
-  const handleVerifyCode = () => {
-    if (!match?.invite_code) return;
-    if (inviteCodeInput.trim().toUpperCase() === match.invite_code.toUpperCase()) {
-      setCodeVerified(true);
-      setCodePanelOpen(false);
-      toast.success('Code verified — you can now join!');
-    } else {
-      toast.error('Invalid invite code.');
-    }
-  };
-
-  const toggleFriend = (friendId: string) => {
-    setSelectedFriendIds(prev => {
-      const next = new Set(prev);
-      next.has(friendId) ? next.delete(friendId) : next.add(friendId);
-      return next;
-    });
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return <PageLoading />;
 
   if (!match) {
     return (
       <div className="flex flex-col items-center justify-center py-32 text-center">
-        <p className="text-text-muted">Match not found</p>
+        <p className="text-text-muted">Match not found.</p>
         <Link href="/" className="mt-4 text-brand hover:underline text-sm">Back to home</Link>
       </div>
     );
   }
 
-  const sport = SPORTS[match.sport];
-  const homeTeam = match.match_teams?.find((t) => t.side === TeamSide.Home);
-  const awayTeam = match.match_teams?.find((t) => t.side === TeamSide.Away);
-  const homeCount = getTeamOccupancy(homeTeam?.id, awayTeam?.id);
-  const awayCount = getTeamOccupancy(awayTeam?.id, homeTeam?.id);
-  const homeOpen = match.team_size - homeCount;
-  const awayOpen = match.team_size - awayCount;
-  const selectedTeamOpen = selectedSide === TeamSide.Home ? homeOpen : selectedSide === TeamSide.Away ? awayOpen : 0;
-
-  const displayStatus = match.status === MatchStatus.Open && isFull ? MatchStatus.Full : match.status;
-  const statusVariant = displayStatus === MatchStatus.Open ? 'success' : displayStatus === MatchStatus.Full ? 'warning' : 'error';
-
-  // Result section helpers
-  const myTeamSide = match.match_teams?.find((t) => t.id === myRow?.team_id)?.side ?? null;
-  const isMyTurnToRespond =
-    (result?.status === MatchResultStatus.Submitted && result.submitter_team !== myTeamSide) ||
-    (result?.status === MatchResultStatus.Disputed  && result.submitter_team === myTeamSide);
-  const isWaitingForOther =
-    (result?.status === MatchResultStatus.Submitted && result.submitter_team === myTeamSide) ||
-    (result?.status === MatchResultStatus.Disputed  && result.submitter_team !== myTeamSide);
-
-  const deriveWinner = (home: string, away: string): MatchWinnerSide => {
-    const h = parseInt(home), a = parseInt(away);
-    if (h > a) return MatchWinnerSide.Home;
-    if (a > h) return MatchWinnerSide.Away;
-    return MatchWinnerSide.Draw;
-  };
-
-  const handleSubmitResult = async () => {
-    if (!user || !myTeamSide) return;
-    const h = parseInt(resultHomeScore), a = parseInt(resultAwayScore);
-    if (isNaN(h) || isNaN(a)) { toast.error('Enter valid scores'); return; }
-    const { ok, error } = await submitResult(user.id, myTeamSide, h, a, deriveWinner(resultHomeScore, resultAwayScore));
-    if (!ok) toast.error(error ?? 'Failed to submit result');
-    else { toast.success('Result submitted — waiting for other team'); setResultPanelOpen(false); }
-  };
-
-  const handleAcceptResult = async () => {
-    if (!result) return;
-    const { ok, error } = await acceptResult(result.id);
-    if (!ok) toast.error(error ?? 'Failed to accept'); else toast.success('Result confirmed!');
-  };
-
-  const handleDisputeResult = async () => {
-    if (!result || !user || !match) return;
-    const h = parseInt(disputeHomeScore), a = parseInt(disputeAwayScore);
-    if (isNaN(h) || isNaN(a)) { toast.error('Enter valid scores'); return; }
-    const { ok, error } = await disputeResult(result.id, user.id, h, a, deriveWinner(disputeHomeScore, disputeAwayScore));
-    if (!ok) { toast.error(error ?? 'Failed to dispute'); return; }
-    await notificationService.create({
-      user_id: result.submitted_by,
-      type: NotificationType.ResultDisputed,
-      title: 'Your result was disputed',
-      body: `Your reported score for "${match.title}" was disputed. Review and respond.`,
-      data: { match_id: match.id, sport: match.sport },
-    });
-    toast.success('Counter-result submitted');
-    setDisputePanelOpen(false);
-  };
-
-  const handleAcceptCounter = async () => {
-    if (!result) return;
-    const { ok, error } = await acceptCounter(result.id);
-    if (!ok) toast.error(error ?? 'Failed'); else toast.success('Result confirmed!');
-  };
-
-  const handleRejectCounter = async () => {
-    if (!result) return;
-    const { ok, error } = await rejectCounter(result.id);
-    if (!ok) toast.error(error ?? 'Failed'); else toast.success('Ratings will be based on player reviews only.');
-  };
-
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
-      {/* Back */}
-      <button onClick={() => router.back()} className="flex items-center gap-2 text-text-muted hover:text-text transition-colors w-fit">
+      <button
+        onClick={() => router.back()}
+        className="flex items-center gap-2 text-text-muted hover:text-text transition-colors w-fit"
+      >
         <ChevronLeft className="w-4 h-4" />
         <span className="text-sm">Back</span>
       </button>
 
-      {/* Hero card */}
-      <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-        <div className="h-1.5" style={{ backgroundColor: sport.color }} />
-        <div className="p-6">
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div className="flex items-center gap-3">
-              <span className="text-4xl">{sport.emoji}</span>
-              <div>
-                <h1 className="font-heading font-bold text-xl text-text">{match.title}</h1>
-                <p className="text-text-muted text-sm">{sport.label}</p>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <Badge variant={statusVariant}>{displayStatus.replace('_', ' ').toUpperCase()}</Badge>
-              {match.is_private && (
-                <div className="flex items-center gap-1 text-text-muted text-xs">
-                  <Lock className="w-3 h-3" />
-                  <span>Invite only</span>
-                </div>
-              )}
-            </div>
-          </div>
+      <MatchHero match={match} occupancy={detail.actualOccupancy} isFull={detail.isFull} />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex items-center gap-2 text-sm text-text">
-              <Clock className="w-4 h-4 text-text-muted flex-shrink-0" />
-              <span>{formatMatchDate(match.scheduled_at)} · {match.duration_minutes}min</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-text">
-              <MapPin className="w-4 h-4 text-text-muted flex-shrink-0" />
-              <span>{match.venues?.name ?? match.location_name}</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-text">
-              <Users className="w-4 h-4 text-text-muted flex-shrink-0" />
-              <span>{actualOccupancy}/{match.max_players} players · {match.team_size}v{match.team_size}</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-text">
-              <Star className="w-4 h-4 text-text-muted flex-shrink-0" />
-              <span>Rating {match.min_rating}–{match.max_rating}</span>
-              <span className="ml-auto font-semibold" style={{ color: match.price_per_player > 0 ? '#f59e0b' : '#22c55e' }}>
-                {formatPrice(match.price_per_player, match.currency)}
-              </span>
-            </div>
-          </div>
+      <MatchTeamsCard match={match} />
 
-          {match.description && (
-            <p className="mt-4 text-text-muted text-sm leading-relaxed border-t border-border pt-4">{match.description}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Teams */}
-      {match.match_teams && match.match_teams.length > 0 && (
-        <div className="bg-surface border border-border rounded-2xl p-6">
-          <h2 className="font-heading font-bold text-lg text-text mb-4">Teams</h2>
-          <TeamSlots
-            teams={match.match_teams}
-            participants={match.match_participants ?? []}
-            teamSize={match.team_size}
-          />
-        </div>
+      {isPast && detail.isCreator && match.status === MatchStatus.Open && (
+        <MatchHappenedPrompt
+          onConfirm={detail.confirmMatchHappened}
+          onDeny={detail.confirmMatchDidntHappen}
+        />
       )}
 
-      {/* Did the match happen? — shown to creator when match ended without filling up */}
-      {isPast && isCreator && match.status === MatchStatus.Open && (
-        <div className="bg-surface border border-brand/30 rounded-2xl p-6 flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-brand/10 flex items-center justify-center flex-shrink-0">
-              <HelpCircle className="w-5 h-5 text-brand" />
-            </div>
-            <div>
-              <h2 className="font-heading font-bold text-base text-text">Did this match happen?</h2>
-              <p className="text-text-muted text-xs mt-0.5">
-                The scheduled time has passed. Let us know so players can rate and report the result.
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <Button variant="secondary" className="flex-1" onClick={handleConfirmMatchDidntHappen}>
-              No, it didn't
-            </Button>
-            <Button className="flex-1" onClick={handleConfirmMatchHappened}>
-              Yes, it happened
-            </Button>
-          </div>
-        </div>
+      {isPast && isParticipant && user && (
+        <MatchResultSection
+          match={match}
+          userId={user.id}
+          myTeamSide={detail.myTeamSide}
+          result={resultApi}
+        />
       )}
 
-      {/* Match Result — only for past matches where user participated */}
-      {isPast && isParticipant && (
-        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-          <div className="px-6 pt-5 pb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-text-muted" />
-              <h2 className="font-heading font-bold text-lg text-text">Match Result</h2>
-            </div>
-            {resultLoading && <div className="w-4 h-4 rounded-full border-2 border-brand border-t-transparent animate-spin" />}
-          </div>
+      <MatchCreatorCard match={match} />
 
-          <div className="px-6 pb-5 flex flex-col gap-4">
-            {/* CONFIRMED */}
-            {result?.status === MatchResultStatus.Confirmed && (
-              <div className="flex items-center gap-3 p-4 bg-success/5 border border-success/30 rounded-xl">
-                <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
-                <div>
-                  <p className="font-semibold text-success text-sm">Result confirmed</p>
-                  <p className="text-text-muted text-xs mt-0.5">
-                    Home {result.counter_submitted_by ? result.counter_home_score : result.home_score}
-                    {' – '}
-                    {result.counter_submitted_by ? result.counter_away_score : result.away_score} Away
-                    {' · '}
-                    {(result.counter_submitted_by ? result.counter_winner_side : result.winner_side) === MatchWinnerSide.Draw
-                      ? 'Draw'
-                      : `${(result.counter_submitted_by ? result.counter_winner_side : result.winner_side) === 'home' ? 'Home' : 'Away'} team wins`}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* ABANDONED */}
-            {result?.status === MatchResultStatus.Abandoned && (
-              <div className="flex items-center gap-3 p-4 bg-warning/5 border border-warning/30 rounded-xl">
-                <AlertCircle className="w-5 h-5 text-warning flex-shrink-0" />
-                <div>
-                  <p className="font-semibold text-warning text-sm">Result disputed</p>
-                  <p className="text-text-muted text-xs mt-0.5">Ratings will be based on player reviews only</p>
-                </div>
-              </div>
-            )}
-
-            {/* PENDING — no result yet, user can submit */}
-            {!result && !resultLoading && (
-              <>
-                {!resultPanelOpen ? (
-                  <Button variant="secondary" onClick={() => setResultPanelOpen(true)}>
-                    Report Result
-                  </Button>
-                ) : (
-                  <div className="flex flex-col gap-4 p-4 bg-surface-alt rounded-xl border border-border">
-                    <p className="text-sm text-text-muted">Enter the final score</p>
-                    <div className="grid grid-cols-3 items-center gap-2">
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="text-xs text-text-muted">Home</span>
-                        <input
-                          type="number" min="0" placeholder="0"
-                          value={resultHomeScore}
-                          onChange={(e) => setResultHomeScore(e.target.value)}
-                          className="w-full text-center px-3 py-2 rounded-lg bg-surface border border-border text-text text-lg font-bold focus:outline-none focus:border-brand"
-                        />
-                      </div>
-                      <div className="text-center text-2xl font-bold text-text-muted">–</div>
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="text-xs text-text-muted">Away</span>
-                        <input
-                          type="number" min="0" placeholder="0"
-                          value={resultAwayScore}
-                          onChange={(e) => setResultAwayScore(e.target.value)}
-                          className="w-full text-center px-3 py-2 rounded-lg bg-surface border border-border text-text text-lg font-bold focus:outline-none focus:border-brand"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="secondary" className="flex-1" onClick={() => setResultPanelOpen(false)}>Cancel</Button>
-                      <Button className="flex-1" loading={resultSubmitting} onClick={handleSubmitResult}>Submit</Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* SUBMITTED — waiting for other team, or user can respond */}
-            {result?.status === MatchResultStatus.Submitted && (
-              <>
-                {isWaitingForOther && (
-                  <div className="flex items-center gap-3 p-4 bg-surface-alt border border-border rounded-xl">
-                    <div className="w-2 h-2 rounded-full bg-warning animate-pulse flex-shrink-0" />
-                    <div>
-                      <p className="text-sm text-text">Waiting for the other team</p>
-                      <p className="text-xs text-text-muted mt-0.5">
-                        You submitted: Home {result.home_score} – {result.away_score} Away
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {isMyTurnToRespond && (
-                  <div className="flex flex-col gap-3">
-                    <div className="p-4 bg-surface-alt border border-border rounded-xl">
-                      <p className="text-sm text-text font-medium">Other team reported</p>
-                      <p className="text-2xl font-bold text-text my-2">
-                        {result.home_score} – {result.away_score}
-                      </p>
-                      <p className="text-xs text-text-muted">
-                        {result.winner_side === MatchWinnerSide.Draw ? 'Draw' : `${result.winner_side === MatchWinnerSide.Home ? 'Home' : 'Away'} team wins`}
-                      </p>
-                    </div>
-                    {!disputePanelOpen ? (
-                      <div className="flex gap-2">
-                        <Button variant="secondary" className="flex-1" loading={resultSubmitting} onClick={() => setDisputePanelOpen(true)}>Dispute</Button>
-                        <Button className="flex-1" loading={resultSubmitting} onClick={handleAcceptResult}>Accept</Button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-3 p-4 bg-surface-alt rounded-xl border border-border">
-                        <p className="text-sm text-text-muted">Enter the actual score</p>
-                        <div className="grid grid-cols-3 items-center gap-2">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className="text-xs text-text-muted">Home</span>
-                            <input
-                              type="number" min="0" placeholder="0"
-                              value={disputeHomeScore}
-                              onChange={(e) => setDisputeHomeScore(e.target.value)}
-                              className="w-full text-center px-3 py-2 rounded-lg bg-surface border border-border text-text text-lg font-bold focus:outline-none focus:border-brand"
-                            />
-                          </div>
-                          <div className="text-center text-2xl font-bold text-text-muted">–</div>
-                          <div className="flex flex-col items-center gap-1">
-                            <span className="text-xs text-text-muted">Away</span>
-                            <input
-                              type="number" min="0" placeholder="0"
-                              value={disputeAwayScore}
-                              onChange={(e) => setDisputeAwayScore(e.target.value)}
-                              className="w-full text-center px-3 py-2 rounded-lg bg-surface border border-border text-text text-lg font-bold focus:outline-none focus:border-brand"
-                            />
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="secondary" className="flex-1" onClick={() => setDisputePanelOpen(false)}>Cancel</Button>
-                          <Button className="flex-1" loading={resultSubmitting} onClick={handleDisputeResult}>Submit Counter</Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* DISPUTED — Team A responds to counter */}
-            {result?.status === MatchResultStatus.Disputed && (
-              <>
-                {isWaitingForOther && (
-                  <div className="flex items-center gap-3 p-4 bg-surface-alt border border-border rounded-xl">
-                    <div className="w-2 h-2 rounded-full bg-warning animate-pulse flex-shrink-0" />
-                    <div>
-                      <p className="text-sm text-text">Waiting for the other team</p>
-                      <p className="text-xs text-text-muted mt-0.5">
-                        Counter submitted: Home {result.counter_home_score} – {result.counter_away_score} Away
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {isMyTurnToRespond && (
-                  <div className="flex flex-col gap-3">
-                    <div className="p-4 bg-surface-alt border border-border rounded-xl">
-                      <p className="text-sm text-text font-medium">Other team disputes — their score</p>
-                      <p className="text-2xl font-bold text-text my-2">
-                        {result.counter_home_score} – {result.counter_away_score}
-                      </p>
-                      <p className="text-xs text-text-muted">
-                        {result.counter_winner_side === MatchWinnerSide.Draw ? 'Draw' : `${result.counter_winner_side === MatchWinnerSide.Home ? 'Home' : 'Away'} team wins`}
-                      </p>
-                    </div>
-                    <p className="text-xs text-text-muted px-1">
-                      If you reject, no result is recorded — ratings will be based on player reviews only.
-                    </p>
-                    <div className="flex gap-2">
-                      <Button variant="danger" className="flex-1" loading={resultSubmitting} onClick={handleRejectCounter}>Reject</Button>
-                      <Button className="flex-1" loading={resultSubmitting} onClick={handleAcceptCounter}>Accept</Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Creator & Venue */}
-      <div className="bg-surface border border-border rounded-2xl divide-y divide-border overflow-hidden">
-        {match.profiles && (
-          <Link href={`/players/${match.profiles.id}`} className="flex items-center gap-3 p-4 hover:bg-surface-alt transition-colors">
-            <Avatar src={match.profiles.avatar_url} name={match.profiles.username} size="sm" />
-            <div>
-              <p className="text-xs text-text-muted">Created by</p>
-              <p className="text-sm font-medium text-text">{match.profiles.full_name ?? match.profiles.username}</p>
-            </div>
-          </Link>
-        )}
-        {match.venues && (
-          <Link href={`/venues/${match.venues.id}`} className="flex items-center gap-3 p-4 hover:bg-surface-alt transition-colors">
-            <div className="w-8 h-8 rounded-lg bg-surface-alt flex items-center justify-center text-lg">🏟️</div>
-            <div>
-              <p className="text-xs text-text-muted">Venue</p>
-              <p className="text-sm font-medium text-text">{match.venues.name}</p>
-            </div>
-          </Link>
-        )}
-      </div>
-
-      {/* Join panel */}
       {joinPanelOpen && !isPast && !isParticipant && (
-        <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4">
-          <h3 className="font-semibold text-text">Choose your side</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { side: TeamSide.Home, label: homeTeam?.name ?? 'Home', count: homeCount, open: homeOpen, color: '#3b82f6' },
-              { side: TeamSide.Away, label: awayTeam?.name ?? 'Away', count: awayCount, open: awayOpen, color: '#f97316' },
-            ].map(({ side, label, count, open, color }) => {
-              const selected = selectedSide === side;
-              const full = open === 0;
-              return (
-                <button
-                  key={side}
-                  onClick={() => { if (!full) { setSelectedSide(side); setSquadSpots(1); } }}
-                  disabled={full}
-                  className={`flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 transition-all ${full ? 'opacity-40 cursor-not-allowed' : ''}`}
-                  style={{
-                    borderColor: selected ? color : '#2a2a3d',
-                    background: selected ? `${color}15` : '#13131a',
-                  }}
-                >
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                  <span className="font-semibold text-sm" style={{ color: selected ? color : '#f0f0ff' }}>{label}</span>
-                  <span className="text-xs text-text-muted">{count}/{match.team_size} · {open} open</span>
-                  {full && <span className="text-xs text-error">Full</span>}
-                </button>
-              );
-            })}
-          </div>
-
-          {selectedSide && selectedTeamOpen > 0 && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3">
-                <div className="flex-1">
-                  <span className="text-sm text-text">Total spots to reserve</span>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    1 for you{squadSpots > 1 ? ` + ${squadSpots - 1} held for your squad` : ''} · max {selectedTeamOpen}
-                  </p>
-                </div>
-                <button onClick={() => setSquadSpots((n) => Math.max(1, n - 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">−</button>
-                <span className="text-lg font-bold text-text w-6 text-center">{squadSpots}</span>
-                <button onClick={() => setSquadSpots((n) => Math.min(selectedTeamOpen, n + 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">+</button>
-              </div>
-            </div>
-          )}
-        </div>
+        <JoinPanel
+          teamSize={match.team_size}
+          homeLabel={detail.homeTeam?.name ?? 'Home'}
+          awayLabel={detail.awayTeam?.name ?? 'Away'}
+          homeCount={detail.homeCount}
+          awayCount={detail.awayCount}
+          homeOpen={detail.homeOpen}
+          awayOpen={detail.awayOpen}
+          selectedSide={selectedSide}
+          onSelectSide={(side) => { setSelectedSide(side); setSquadSpots(1); }}
+          squadSpots={squadSpots}
+          onSquadSpotsChange={setSquadSpots}
+        />
       )}
 
-      {/* Invite code panel (private matches) */}
-      {codePanelOpen && match.is_private && !isParticipant && !isPast && !codeVerified && (
-        <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4">
-          <h3 className="font-semibold text-text">Have an invite code?</h3>
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={inviteCodeInput}
-              onChange={(e) => setInviteCodeInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyCode(); }}
-              placeholder="Enter code"
-              className="flex-1 px-4 py-2.5 rounded-xl bg-surface-alt border border-border text-text focus:outline-none focus:border-brand"
-            />
-            <Button onClick={handleVerifyCode}>Unlock</Button>
-          </div>
-        </div>
+      {codePanelOpen && match.is_private && !isParticipant && !isPast && !detail.codeVerified && (
+        <InviteCodePanel onVerify={detail.verifyCode} onClose={() => setCodePanelOpen(false)} />
       )}
 
-      {/* Squad spots panel (for participants) */}
       {squadPanelOpen && isParticipant && !isPast && (
-        <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-5">
-          <h3 className="font-semibold text-text">Reserve squad spots</h3>
-
-          {/* Own team */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <span className="text-sm font-medium text-text">Your team</span>
-              <p className="text-xs text-text-muted mt-0.5">
-                {newTotalSpots === 1 ? 'Just you' : `You + ${newTotalSpots - 1} held`}
-                {` · max ${myCurrentExtraSpots + myTeamOpenSlots + 1}`}
-              </p>
-            </div>
-            <button onClick={() => setNewTotalSpots((n) => Math.max(1, n - 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">−</button>
-            <span className="text-lg font-bold text-text w-6 text-center">{newTotalSpots}</span>
-            <button onClick={() => setNewTotalSpots((n) => Math.min(myCurrentExtraSpots + myTeamOpenSlots + 1, n + 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">+</button>
-          </div>
-
-          {/* Opponent team */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <span className="text-sm font-medium text-text">Opponent team</span>
-              <p className="text-xs text-text-muted mt-0.5">
-                {newOpponentSpots === 0 ? 'No reservation' : `${newOpponentSpots} held`}
-                {` · max ${myCurrentExtraSpotOpponent + opponentOpenSlots}`}
-              </p>
-            </div>
-            <button onClick={() => setNewOpponentSpots((n) => Math.max(0, n - 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">−</button>
-            <span className="text-lg font-bold text-text w-6 text-center">{newOpponentSpots}</span>
-            <button onClick={() => setNewOpponentSpots((n) => Math.min(myCurrentExtraSpotOpponent + opponentOpenSlots, n + 1))} className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-brand hover:bg-surface-alt">+</button>
-          </div>
-
-          <div className="flex gap-3">
-            <Button variant="secondary" className="flex-1" onClick={() => setSquadPanelOpen(false)}>Cancel</Button>
-            <Button className="flex-1" loading={updatingSquad} onClick={handleUpdateSquadSpots}>Confirm</Button>
-          </div>
-        </div>
+        <SquadSpotsPanel
+          currentOwnSpots={detail.myCurrentExtraSpots}
+          currentOpponentSpots={detail.myCurrentExtraSpotOpponent}
+          ownOpenSlots={detail.myTeamOpenSlots}
+          opponentOpenSlots={detail.opponentOpenSlots}
+          saving={detail.updatingSquad}
+          onConfirm={detail.updateSquadSpots}
+          onClose={() => setSquadPanelOpen(false)}
+        />
       )}
 
-      {/* Send to friends panel */}
       {sharePanelOpen && (
-        <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-text">Send to Friends</h3>
-            <button onClick={() => { setSharePanelOpen(false); setSelectedFriendIds(new Set()); }} className="text-text-muted hover:text-text">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          {friends.length === 0 ? (
-            <p className="text-text-muted text-sm text-center py-4">Add some friends first to share matches with them.</p>
-          ) : (
-            <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
-              {friends.map(f => {
-                const selected = selectedFriendIds.has(f.profiles!.id);
-                return (
-                  <button
-                    key={f.id}
-                    onClick={() => toggleFriend(f.profiles!.id)}
-                    className={`flex items-center gap-3 p-3 rounded-xl transition-colors text-left
-                      ${selected ? 'bg-brand/10' : 'hover:bg-surface-alt'}`}
-                  >
-                    <input type="checkbox" checked={selected} readOnly className="accent-brand flex-shrink-0" />
-                    <Avatar src={f.profiles!.avatar_url} name={f.profiles!.full_name ?? f.profiles!.username} size="sm" />
-                    <span className="text-sm text-text">{f.profiles!.full_name ?? f.profiles!.username}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {friends.length > 0 && (
-            <Button
-              loading={sendingInvites}
-              disabled={selectedFriendIds.size === 0}
-              onClick={handleSendToFriends}
-            >
-              Send{selectedFriendIds.size > 0 ? ` (${selectedFriendIds.size})` : ''}
-            </Button>
-          )}
-        </div>
+        <ShareWithFriendsPanel match={match} onClose={() => setSharePanelOpen(false)} />
       )}
 
-      {/* Action bar */}
-      <div className="flex gap-3">
-        <button
-          onClick={handleShare}
-          className="w-12 h-12 rounded-xl border border-border flex items-center justify-center text-text-muted hover:text-text hover:bg-surface-alt transition-colors flex-shrink-0"
-        >
-          <Share2 className="w-5 h-5" />
-        </button>
-        <button
-          onClick={() => setSharePanelOpen(o => !o)}
-          className="w-12 h-12 rounded-xl border border-border flex items-center justify-center text-text-muted hover:text-text hover:bg-surface-alt transition-colors flex-shrink-0"
-          title="Send to friends"
-        >
-          <Users className="w-5 h-5" />
-        </button>
-
-        {isPast && isParticipant && !myRow?.rating_submitted && !isReviewWindowClosed(match.scheduled_at) && (
-          <Link href={`/matches/${id}/rate`} className="flex-1">
-            <Button size="lg" className="w-full">Rate Players</Button>
-          </Link>
-        )}
-
-        {!isPast && !isParticipant && !isFull && match.status === MatchStatus.Open && (!match.is_private || codeVerified) && (
-          joinPanelOpen ? (
-            <>
-              <Button variant="secondary" onClick={() => { setJoinPanelOpen(false); setSelectedSide(null); setSquadSpots(1); }} className="flex-1">
-                Cancel
-              </Button>
-              <Button
-                onClick={handleJoin}
-                loading={joining}
-                disabled={!selectedSide}
-                className="flex-1"
-              >
-                Join {selectedSide === TeamSide.Home ? 'Home' : selectedSide === TeamSide.Away ? 'Away' : '...'}
-              </Button>
-            </>
-          ) : (
-            <Button size="lg" className="flex-1" onClick={() => setJoinPanelOpen(true)}>
-              Join Match
-            </Button>
-          )
-        )}
-
-        {!isPast && !isParticipant && match.is_private && !isFull && !codeVerified && (
-          <Button variant="secondary" size="lg" className="flex-1" onClick={() => setCodePanelOpen((o) => !o)}>
-            Enter Invite Code
-          </Button>
-        )}
-
-        {!isPast && isParticipant && !isCreator && (
-          <>
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => { setNewTotalSpots(myCurrentExtraSpots + 1); setNewOpponentSpots(myCurrentExtraSpotOpponent); setSquadPanelOpen((o) => !o); }}
-            >
-              + Squad
-            </Button>
-            <Button variant="danger" size="lg" className="flex-1" onClick={handleLeave}>
-              Leave Match
-            </Button>
-          </>
-        )}
-
-        {isCreator && match.status !== MatchStatus.Cancelled && !isPast && (
-          <>
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => { setNewTotalSpots(myCurrentExtraSpots + 1); setNewOpponentSpots(myCurrentExtraSpotOpponent); setSquadPanelOpen((o) => !o); }}
-            >
-              + Squad
-            </Button>
-            <Button variant="danger" size="lg" className="flex-1" onClick={handleCancelMatch}>
-              Cancel Match
-            </Button>
-          </>
-        )}
-
-        {isFull && !isParticipant && (
-          <Button disabled className="flex-1">Match Full</Button>
-        )}
-      </div>
+      <MatchActionBar
+        match={match}
+        isCreator={detail.isCreator}
+        isParticipant={Boolean(isParticipant)}
+        isPast={isPast}
+        isFull={detail.isFull}
+        codeVerified={detail.codeVerified}
+        ratingSubmitted={Boolean(detail.myRow?.rating_submitted)}
+        joinPanelOpen={joinPanelOpen}
+        selectedSide={selectedSide}
+        joining={detail.joining}
+        onOpenJoin={() => setJoinPanelOpen(true)}
+        onCancelJoin={closeJoinPanel}
+        onJoin={async () => {
+          if (!selectedSide) return;
+          await detail.join(selectedSide, squadSpots);
+          closeJoinPanel();
+        }}
+        onToggleCodePanel={() => setCodePanelOpen((o) => !o)}
+        onToggleSquadPanel={() => setSquadPanelOpen((o) => !o)}
+        onToggleSharePanel={() => setSharePanelOpen((o) => !o)}
+        onShare={detail.share}
+        onLeave={detail.leave}
+        onCancelMatch={detail.cancelMatch}
+      />
     </div>
   );
 }
