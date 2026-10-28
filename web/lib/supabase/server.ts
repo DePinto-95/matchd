@@ -1,3 +1,15 @@
+/**
+ * Supabase client for Server Components and Server Actions, reading and
+ * writing auth cookies through next/headers.
+ *
+ * Currently unused — every page under app/ is a client component, and all data
+ * access goes through shared/services/ with the browser client. Kept for the
+ * first server-rendered page that needs an authenticated read.
+ *
+ * NOT usable in app/auth/callback/route.ts: that route has to set session
+ * cookies on a redirect response it constructs itself, which the next/headers
+ * cookie store cannot do. It builds its own client on purpose.
+ */
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 

@@ -3,6 +3,17 @@
 Generated from a full code review of `web/` (pages, stores, hooks, components, Supabase SQL) on 2026-07-18.
 Priorities: **P1** = bug / broken behavior, **P2** = missing feature that blocks a real flow, **P3** = improvement / cleanup.
 
+> **Note (2026-10-28):** `web/` was restructured — feature folders under
+> `web/features/`, a data-access layer in `shared/services/`, one enum per file
+> in `shared/enums/`, and the schema captured into `supabase/migrations/`. File
+> paths in older tickets may be stale; see `CLAUDE.md` for the current layout.
+> Closed as part of that work: MD-09, MD-10, MD-12, MD-22, MD-23.
+> Still open and now easier to fix, because the queries live in one place:
+> **MD-05** (unescaped PostgREST `.or()` search term — now a one-line fix in
+> `profileService.search`), **MD-19** (swallowed Supabase errors) and **MD-20**
+> (non-atomic squad-spot adjustments — every flow now goes through
+> `participantService`, so moving them into a single RPC is a contained change).
+
 ---
 
 ## P1 — Bugs
@@ -48,24 +59,25 @@ The match page inserts `result_disputed` notifications, but the notifications pa
 A logged-in user who clicks a reset-password email link hits `/auth/callback`, which the proxy redirects to `/` (rule: authed users are pushed off all `/auth` routes except `/auth/reset-password`) — before the PKCE code exchange runs. The reset flow dies.
 **Fix:** also exempt `/auth/callback` from the authed-user redirect.
 
-### MD-09 · Test/dev artifacts shipped in the create wizard
-**File:** `web/app/(app)/create/page.tsx`
-The "⚡ Fill: 1 min test" button and the `1`-minute entry in `DURATIONS` are development helpers visible to every user.
-**Fix:** remove them, or gate behind `process.env.NODE_ENV === 'development'`.
+### MD-09 · Test/dev artifacts shipped in the create wizard — ✅ Fixed
+**Files:** `web/features/create/lib/constants.ts`, `web/features/create/components/StepSchedule.tsx`
+The "⚡ Fill: 1 min test" button and the `1`-minute entry in `DURATIONS` were development helpers visible to every user.
+**Fix:** both are gated behind `IS_DEV` (`process.env.NODE_ENV === 'development'`) rather than deleted — they are what makes the post-match rating and result flows testable at all. `DURATIONS` omits the 1-minute option in production builds.
 
-### MD-10 · `SPORTS[match.sport]` crashes on unknown sport values + duplicated color map
-**File:** `web/components/match/MatchCard.tsx`
-`sport.emoji` throws if the DB ever holds a sport value not in `SPORTS` (the page dies for the whole grid). Separately, `getSportColor` re-hardcodes every sport color inline, violating the project rule that all sport metadata lives in `constants/sports.ts` (the same colors already exist as `SPORTS[x].color`).
-**Fix:** fall back to `SPORTS.other` when lookup fails; delete `getSportColor` and use `SPORTS[...].color`.
+### MD-10 · `SPORTS[match.sport]` crashes on unknown sport values + duplicated color map — ✅ Fixed
+**File:** `web/features/matches/components/MatchCard.tsx`
+`sport.emoji` threw if the DB ever held a sport value not in `SPORTS`, taking down the whole grid. Separately, `getSportColor` re-hardcoded every sport color inline, duplicating `SPORTS[x].color`.
+**Fix:** `SPORTS[match.sport] ?? SPORTS[SportType.Other]`, and `getSportColor` deleted in favour of `sport.color`. The card also now uses the shared `getMatchOccupancy` helper instead of its own copy of the occupancy reduce.
 
 ### MD-11 · Cancelled matches show up in "Recent Matches"
 **File:** `web/hooks/useProfile.ts`
 `playedCounts` correctly skips cancelled matches, but `matchHistory` (rendered as "Recent Matches" on profile pages) includes them — including matches auto-cancelled by `auto_cleanup_unconfirmed_matches`.
 **Fix:** filter `status !== 'cancelled'` from history (or show a "Cancelled" badge deliberately).
 
-### MD-12 · Docs/code mismatch: default rating is 2.0 in SQL, 5.0 in CLAUDE.md
-**Files:** `CLAUDE.md`, `web/supabase/*.sql`
-CLAUDE.md says player ratings default to 5.0/10; every SQL seed (`update_player_rating`, `update_elo_rating`) and the join-gate fallback in the match page use 2.0. Whichever is intended, align the other — the join gate (`min_rating`) behaves very differently for new players depending on this.
+### MD-12 · Docs/code mismatch: default rating is 2.0 in SQL, 5.0 in CLAUDE.md — ✅ Fixed
+**Files:** `CLAUDE.md`, `supabase/migrations/0000_baseline_schema.sql`, `shared/services/ratingService.ts`
+CLAUDE.md said player ratings default to 5.0/10; every SQL seed and the join-gate fallback used 2.0.
+**Fix:** 2.0 is correct and the docs were wrong. CLAUDE.md now says so explicitly, the baseline migration records it with a note, and the fallback is a single named constant, `DEFAULT_RATING` in `ratingService`, instead of a `2.0` literal in the match page.
 
 ### MD-31 · Match detail page & cards trust stale `status`/`current_players` instead of actual occupancy — ✅ Fixed
 **Files:** `web/app/(app)/matches/[id]/page.tsx`, `web/components/match/MatchCard.tsx`
@@ -118,13 +130,17 @@ Join/leave/update flows do participant INSERT/UPDATE/DELETE then a *separate* `a
 ### MD-21 · No lint/typecheck tooling
 `package.json` has no `lint` script and no ESLint dependency (yet the code carries `eslint-disable` comments). Add ESLint (flat config) + `tsc --noEmit` script, and ideally a GitHub Actions workflow running both plus `next build` on push.
 
-### MD-22 · Duplicated UI blocks
-- The Ratings card is copy-pasted between `profile/page.tsx` and `players/[id]/page.tsx` → extract `<RatingsCard />`.
-- The friend-search result row (Add/Pending/Accept/Friends button logic) is duplicated between `friends/page.tsx` and `friends/invite/page.tsx` → extract `<PlayerSearchRow />`.
-- Home and Discover are ~80% identical; consider folding the search box into Home and dropping Discover, or extracting a shared `<MatchGrid />`.
+### MD-22 · Duplicated UI blocks — ✅ Fixed
+- Ratings card → `features/profile/components/RatingsCard.tsx`, used by both the own-profile and public player pages (−42 lines on the latter). The repeated `5` unlock threshold is now `MATCHES_TO_UNLOCK_RATING`.
+- Friend-search result row → `features/friends/components/PlayerSearchRow.tsx`, inside a `PlayerSearch` component that also owns the input, skeleton and empty state, so both pages share the whole block. The debounce and the five request actions became `usePlayerSearch` and `useFriendActions`.
+- Home and Discover → shared `features/matches/components/MatchGrid.tsx`; Discover was kept (it has the search box) rather than dropped. The "hide full upcoming matches unless you're in them" filter, which was duplicated and re-implemented the occupancy maths a third time, is now `filterVisibleMatches`.
 
-### MD-23 · Native `confirm()` dialogs
-Leave/cancel flows use browser `confirm()`, which clashes with the app's styling and is blocked in some embedded contexts. Replace with a small styled confirm modal component.
+Further duplication removed while in there: `PersonRow` (the avatar/name/handle row, 4 copies on the friends page alone), `EmptyState`, `SkeletonRows`, `ScoreInput` (the Home–Away entry pair, verbatim twice in the match result flow), `RateSection`/`RatePlayerRow`, `RateClosedScreen`, and `ui/BackButton` (copy-pasted across five pages).
+
+### MD-23 · Native `confirm()` dialogs — ✅ Fixed
+**Files:** `web/components/ui/ConfirmDialog.tsx`, `web/features/matches/hooks/useMatchDetail.ts`
+Leave, cancel-match and "it didn't happen" used browser `confirm()`.
+**Fix:** `useMatchDetail` holds a pending-confirmation descriptor (title, message, label, action) that the page renders as a `ConfirmDialog`, so all three flows stay in one place and each gets a real explanation instead of "Continue?".
 
 ### MD-24 · `match_results` realtime channel subscribes on every match visit
 `useMatchResult` opens INSERT/UPDATE subscriptions the moment any match detail page mounts, including future matches where no result can exist. Gate the subscription on `isPast && isParticipant`.

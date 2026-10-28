@@ -46,15 +46,50 @@ UI components are **not** shared — every `matchd/components/*` file imports Re
 
 ## Architecture (`web/`)
 
+### Where code goes
+
+```
+web/
+├── app/           ← routing only. A page.tsx composes components; it holds no
+│                    queries and little state. Most are 50-100 lines.
+├── features/      ← one folder per feature, each with its own
+│   │                components/, hooks/ and lib/
+│   ├── matches/   ← match detail, cards, the feed grid, occupancy maths
+│   ├── create/    ← the four-step wizard
+│   ├── profile/   ← own profile + the RatingsCard shared with player profiles
+│   ├── friends/   ← friends list, requests, player search
+│   ├── players/   ← public player profile, report modal
+│   ├── rate/      ← post-match rating
+│   └── notifications/ ← row rendering + the per-type icon/route table
+├── components/    ← only genuinely cross-feature UI
+│   ├── ui/        ← Button, Input, Avatar, Badge, Modal-ish dialogs, pickers
+│   ├── layout/    ← Navbar
+│   └── providers/ ← AuthProvider
+├── services/      ← index.ts, wiring shared/services to the browser client
+├── hooks/         ← cross-feature hooks only (useRealtime, useProfile, ...)
+├── lib/           ← supabase clients, reviewAssignment
+└── stores/        ← thin wrappers over shared/stores factories
+```
+
+**Which folder?** UI used by one feature goes in that feature. UI used by two or
+more features goes in `components/ui/`. Anything that talks to the database goes
+in `shared/services/` — see "Frontend vs backend" below.
+
+A feature folder has an `index.ts` barrel, so
+`import { MatchHero } from '@/features/matches/components'` works.
+
 ### Routing — Next.js 16 App Router (file-based)
 - `app/(app)/` — authenticated pages (wrapped with Navbar)
 - `app/(app)/page.tsx` — home feed (upcoming matches)
+- `app/(app)/discover/page.tsx` — same feed plus a free-text search box
 - `app/(app)/create/page.tsx` — multi-step match creation wizard
 - `app/(app)/matches/[id]/page.tsx` — match detail, team slots, join/leave flow
 - `app/(app)/matches/[id]/rate/page.tsx` — post-match player rating
 - `app/(app)/profile/page.tsx` — own profile (avatar upload, edit modal, levels, ratings, recent matches)
 - `app/(app)/players/[id]/page.tsx` — public player profile (friend actions, report)
 - `app/(app)/venues/[id]/page.tsx` — public venue page
+- `app/(app)/venues/dashboard/page.tsx` — venue owner's bookings list
+- `app/(app)/squads/[id]/page.tsx` — squad detail (no create/manage UI yet, MD-14)
 - `app/(app)/notifications/page.tsx` — notification list (click navigates to match or /friends)
 - `app/(app)/friends/page.tsx` — friends list, pending requests, find people search
 - `app/(app)/friends/invite/page.tsx` — search existing players + shareable invite link
@@ -67,7 +102,9 @@ UI components are **not** shared — every `matchd/components/*` file imports Re
 **Next.js 16 note**: `middleware.ts` is renamed to `proxy.ts`, exported function is `proxy()` not `middleware()`.
 
 ### Backend — Supabase
-- Browser client: `lib/supabase/client.ts` (uses `createBrowserClient` from `@supabase/ssr`)
+- Browser client: `lib/supabase/client.ts` (uses `createBrowserClient` from `@supabase/ssr`) — imported only by `web/services/index.ts` and the store wrappers
+- Server client: `lib/supabase/server.ts` — for Server Components, currently unused. `app/auth/callback/route.ts` deliberately does **not** use it: that route must set cookies on a redirect response it builds itself, which the `next/headers` cookie store cannot do.
+- The schema lives in `supabase/` — start at `supabase/README.md`, which gives the apply order and warns that the folder is not replayable in filename order.
 - Server client: `lib/supabase/server.ts` (uses `createServerClient` + Next.js cookies)
 - All DB operations go through the Supabase JS client — no separate API layer.
 
@@ -76,7 +113,7 @@ Key tables:
 - `matches` — status lifecycle: `open → full → in_progress → completed/cancelled`
 - `match_participants` — DB trigger auto-increments `matches.current_players` and flips status to `full` when at capacity. Key columns: `extra_spots` (reserved spots on own team), `extra_spots_opponent` (reserved spots on opponent team)
 - `match_teams` — `home`/`away` rows per match; participants reference a team
-- `player_ratings` — one row per `(player_id, sport)`; DB trigger recalculates weighted rolling average on each `match_ratings` insert (default 5.0/10)
+- `player_ratings` — one row per `(player_id, sport)`; DB trigger recalculates weighted rolling average on each `match_ratings` insert. **Ratings start at 2.0/10**, not 5.0 — this doc said 5.0 for a long time and was wrong (MD-12); every SQL seed uses 2.0, and matches gate joining on `min_rating`
 - `venues` — owned by `venue` accounts; matches link via `venue_id`
 - `friendships` — `requester_id`, `addressee_id`, `status: 'pending' | 'accepted' | 'blocked'`. Unique constraint on (requester_id, addressee_id). RLS: both parties can SELECT/DELETE; only addressee can UPDATE (accept); only requester can INSERT.
 - `notifications` — `user_id`, `type`, `title`, `body`, `data` (jsonb), `read`. Types in use: `friend_request`, `friend_accepted`, `match_invite`. RLS: any authenticated user can INSERT (needed to send notifications to others); users can only SELECT/UPDATE/DELETE their own.
@@ -98,12 +135,18 @@ Stores in `stores/`:
 All four are 3-8 line wrappers that inject the browser Supabase client (and `sonner` toast callbacks) into a factory from `shared/stores/`.
 
 ### Realtime
-Supabase Realtime subscriptions in `hooks/useRealtime.ts`:
+Channels are opened by `shared/services/realtimeService.ts` (each subscribe returns its own teardown); `hooks/useRealtime.ts` is the React wrapper:
 - `useMatchRealtime(matchId, onUpdate)` — subscribes to `match_participants` and `matches` changes
 - `useNotificationRealtime(userId, onNew)` — subscribes to `notifications` INSERT events. **Only call this once per session** — it lives in the Navbar. Do NOT also call it from individual pages or Supabase will throw a duplicate channel error.
 
 ### Forms
-React Hook Form + Zod for all forms.
+React Hook Form + Zod for all forms. The create wizard's schema is in `features/create/lib/schema.ts`; Zod enums take the TS enum object directly (`z.enum(AccountType)`).
+
+### Shared UI conventions
+- `components/ui/PageLoading` — the page-level spinner. Don't hand-roll one.
+- `components/ui/BackButton` — the "< Back" link above detail pages.
+- `components/ui/ConfirmDialog` — use instead of the native `confirm()`, which ignores the app's styling and is blocked in some embedded contexts.
+- `features/friends/components/{PersonRow,EmptyState,SkeletonRows}` — the avatar/name row, empty states and loading skeletons used across list pages.
 
 ### Styling — Tailwind CSS v4
 Configured via `@import "tailwindcss"` and `@theme inline` in `app/globals.css` (no `tailwind.config.ts` needed).
