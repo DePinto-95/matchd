@@ -2,8 +2,6 @@
 
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
 import { MatchStatus, TeamSide } from '@matchd/shared/enums';
 import { useMatchResult } from '@/hooks/useMatchResult';
 import { useMatchDetail } from '@/features/matches/hooks/useMatchDetail';
@@ -20,10 +18,10 @@ import {
   SquadSpotsPanel,
 } from '@/features/matches/components';
 import { PageLoading } from '@/components/ui/PageLoading';
+import { BackButton } from '@/components/ui/BackButton';
 
 export default function MatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const router = useRouter();
   const detail = useMatchDetail(id);
   const { match, loading, user, isPast, isParticipant } = detail;
 
@@ -60,13 +58,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
-      <button
-        onClick={() => router.back()}
-        className="flex items-center gap-2 text-text-muted hover:text-text transition-colors w-fit"
-      >
-        <ChevronLeft className="w-4 h-4" />
-        <span className="text-sm">Back</span>
-      </button>
+      <BackButton />
 
       <MatchHero match={match} occupancy={detail.actualOccupancy} isFull={detail.isFull} />
 

@@ -1,37 +1,25 @@
 'use client';
 
-import { useEffect, use, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { ChevronLeft, UserPlus, UserCheck, UserX, Clock, Flag } from 'lucide-react';
+import { use, useEffect, useState } from 'react';
+import { ReportReason } from '@matchd/shared/enums';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuthStore } from '@/stores/authStore';
 import { useFriendStore } from '@/stores/friendStore';
-import { Avatar } from '@/components/ui/Avatar';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { MatchCard } from '@/components/match/MatchCard';
-import { RatingsCard } from '@/features/profile/components';
-import { ReportReason } from '@matchd/shared/enums';
+import { useFriendActions } from '@/features/friends/hooks/useFriendActions';
+import { PlayerProfileCard, ReportPlayerModal } from '@/features/players/components';
+import { RatingsCard, RecentMatches } from '@/features/profile/components';
+import { PageLoading } from '@/components/ui/PageLoading';
 import { FriendRelationKind } from '@matchd/shared/enums';
-
-const REPORT_REASONS: Record<ReportReason, string> = {
-  [ReportReason.SpamScam]: 'Spam / Scam',
-  [ReportReason.InappropriateBehavior]: 'Inappropriate Behavior',
-  [ReportReason.FakeProfile]: 'Fake Profile',
-  [ReportReason.Other]: 'Other',
-};
+import { BackButton } from '@/components/ui/BackButton';
 
 export default function PlayerProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const router = useRouter();
   const { profile: myProfile } = useAuthStore();
-  const { getRelation, fetchFriends, sendRequest, cancelRequest, acceptRequest, declineRequest, removeFriend, reportUser } = useFriendStore();
+  const { getRelation, fetchFriends, reportUser } = useFriendStore();
   const { profile, ratings, matchHistory, playedCounts, loading, fetchProfile } = useProfile();
 
-  const [actingOn, setActingOn] = useState<string | null>(null);
+  const actions = useFriendActions();
   const [reportOpen, setReportOpen] = useState(false);
-  const [reportReason, setReportReason] = useState<ReportReason>(ReportReason.SpamScam);
-  const [reportDetails, setReportDetails] = useState('');
   const [reporting, setReporting] = useState(false);
 
   useEffect(() => {
@@ -42,32 +30,23 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
   const isOwnProfile = myProfile?.id === id;
   const relation = isOwnProfile ? null : getRelation(id);
 
+  /** One button cycles through the relationship states. */
   const handleFriendAction = async () => {
-    if (!myProfile || !relation) return;
-    setActingOn(id);
-    if (relation.kind === FriendRelationKind.None) await sendRequest(myProfile.id, id, myProfile.username);
-    else if (relation.kind === FriendRelationKind.PendingSent) await cancelRequest(relation.friendshipId);
-    else if (relation.kind === FriendRelationKind.PendingReceived) await acceptRequest(relation.friendshipId, myProfile.username);
-    else if (relation.kind === FriendRelationKind.Friends) await removeFriend(relation.friendshipId);
-    setActingOn(null);
+    if (!relation) return;
+    if (relation.kind === FriendRelationKind.None) await actions.send(id);
+    else if (relation.kind === FriendRelationKind.PendingSent) await actions.cancel(relation.friendshipId);
+    else if (relation.kind === FriendRelationKind.PendingReceived) await actions.accept(relation.friendshipId);
+    else if (relation.kind === FriendRelationKind.Friends) await actions.remove(relation.friendshipId);
   };
 
-  const handleReport = async () => {
+  const handleReport = async (reason: ReportReason, details?: string) => {
     if (!myProfile) return;
     setReporting(true);
-    await reportUser(myProfile.id, id, reportReason, reportDetails.trim() || undefined);
+    await reportUser(myProfile.id, id, reason, details);
     setReporting(false);
-    setReportOpen(false);
-    setReportDetails('');
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return <PageLoading />;
 
   if (!profile) {
     return (
@@ -79,94 +58,27 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
-      <button onClick={() => router.back()} className="flex items-center gap-2 text-text-muted hover:text-text transition-colors w-fit">
-        <ChevronLeft className="w-4 h-4" />
-        <span className="text-sm">Back</span>
-      </button>
+      <BackButton />
 
-      <div className="bg-surface border border-border rounded-2xl p-6">
-        <div className="flex items-center gap-4">
-          <Avatar src={profile.avatar_url} name={profile.full_name ?? profile.username} size="xl" />
-          <div className="flex-1 min-w-0">
-            <h1 className="font-heading font-bold text-xl text-text">{profile.full_name ?? profile.username}</h1>
-            <p className="text-text-muted text-sm">@{profile.username}</p>
-            {profile.location && <p className="text-text-muted text-sm mt-1">📍 {profile.location}</p>}
-            <Badge variant="brand" className="mt-2 capitalize">{profile.account_type}</Badge>
-          </div>
-        </div>
-        {profile.bio && <p className="mt-4 text-text-muted text-sm leading-relaxed">{profile.bio}</p>}
+      <PlayerProfileCard
+        profile={profile}
+        relation={relation}
+        acting={actions.actingOn !== null}
+        onFriendAction={handleFriendAction}
+        onReport={() => setReportOpen(true)}
+      />
 
-        {!isOwnProfile && relation && (
-          <div className="flex items-center gap-3 mt-5 pt-5 border-t border-border">
-            <Button
-              variant={relation.kind === FriendRelationKind.Friends ? 'secondary' : 'primary'}
-              size="sm"
-              loading={actingOn === id}
-              onClick={handleFriendAction}
-            >
-              {relation.kind === FriendRelationKind.None && <><UserPlus className="w-4 h-4" /> Add Friend</>}
-              {relation.kind === FriendRelationKind.PendingSent && <><Clock className="w-4 h-4" /> Pending</>}
-              {relation.kind === FriendRelationKind.PendingReceived && <><UserCheck className="w-4 h-4" /> Accept</>}
-              {relation.kind === FriendRelationKind.Friends && <><UserX className="w-4 h-4" /> Remove Friend</>}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setReportOpen(true)}>
-              <Flag className="w-4 h-4" />
-              Report
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Report modal */}
       {reportOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-          onClick={e => { if (e.target === e.currentTarget) setReportOpen(false); }}
-        >
-          <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-sm">
-            <h2 className="font-heading font-bold text-lg text-text mb-4">Report User</h2>
-            <div className="flex flex-col gap-3 mb-4">
-              {(Object.entries(REPORT_REASONS) as [ReportReason, string][]).map(([value, label]) => (
-                <label key={value} className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="reportReason"
-                    value={value}
-                    checked={reportReason === value}
-                    onChange={() => setReportReason(value)}
-                    className="accent-brand"
-                  />
-                  <span className="text-sm text-text">{label}</span>
-                </label>
-              ))}
-            </div>
-            <textarea
-              placeholder="Additional details (optional)"
-              value={reportDetails}
-              onChange={e => setReportDetails(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2 rounded-xl bg-background border border-border text-text text-sm placeholder:text-text-muted focus:outline-none focus:border-brand resize-none mb-4"
-            />
-            <div className="flex gap-3">
-              <Button variant="secondary" className="flex-1" onClick={() => setReportOpen(false)}>Cancel</Button>
-              <Button className="flex-1" loading={reporting} onClick={handleReport}>Submit</Button>
-            </div>
-          </div>
-        </div>
+        <ReportPlayerModal
+          submitting={reporting}
+          onSubmit={handleReport}
+          onClose={() => setReportOpen(false)}
+        />
       )}
 
       <RatingsCard ratings={ratings} playedCounts={playedCounts} />
 
-      {matchHistory.length > 0 && (
-        <div>
-          <h2 className="font-heading font-bold text-lg text-text mb-4">Recent Matches</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {matchHistory.slice(0, 4).map((m) => (
-              <MatchCard key={m.id} match={m} />
-            ))}
-          </div>
-        </div>
-      )}
+      <RecentMatches matches={matchHistory} />
     </div>
   );
 }

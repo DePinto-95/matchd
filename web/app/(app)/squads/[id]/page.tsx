@@ -1,16 +1,15 @@
 'use client';
 
 import { useEffect, useState, use } from 'react';
-import { useRouter } from 'next/navigation';
-import { ChevronLeft, Users } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { squadService } from '@/services';
 import { Squad } from '@matchd/shared/types';
 import { Avatar } from '@/components/ui/Avatar';
 import Link from 'next/link';
+import { BackButton } from '@/components/ui/BackButton';
 
 export default function SquadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const router = useRouter();
   const [squad, setSquad] = useState<Squad | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -35,10 +34,7 @@ export default function SquadPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="max-w-xl mx-auto flex flex-col gap-6">
-      <button onClick={() => router.back()} className="flex items-center gap-2 text-text-muted hover:text-text transition-colors w-fit">
-        <ChevronLeft className="w-4 h-4" />
-        <span className="text-sm">Back</span>
-      </button>
+      <BackButton />
 
       <div className="bg-surface border border-border rounded-2xl p-6">
         <div className="flex items-center gap-3 mb-4">

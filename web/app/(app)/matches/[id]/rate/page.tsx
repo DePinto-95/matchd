@@ -1,217 +1,56 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, use } from 'react';
-import { useRouter } from 'next/navigation';
-import { ChevronLeft, Star, CheckCircle, Clock } from 'lucide-react';
-import { useAuthStore } from '@/stores/authStore';
-import { useMatchStore } from '@/stores/matchStore';
-import { useRatings } from '@/hooks/useRatings';
-import { getReviewAssignment } from '@/lib/reviewAssignment';
-import { Match, MatchParticipant } from '@matchd/shared/types';
-import { Avatar } from '@/components/ui/Avatar';
-import { Button } from '@/components/ui/Button';
-import { participantService, ratingService } from '@/services';
+import { use, useState } from 'react';
+import { CheckCircle, Clock, Star } from 'lucide-react';
 import { isReviewWindowClosed, REVIEW_WINDOW_DAYS } from '@matchd/shared/lib/helpers';
-import { toast } from 'sonner';
+import { useRateMatch } from '@/features/rate/hooks/useRateMatch';
+import { RateClosedScreen, RateSection } from '@/features/rate/components';
+import { BackButton } from '@/components/ui/BackButton';
+import { Button } from '@/components/ui/Button';
+import { PageLoading } from '@/components/ui/PageLoading';
 
 export default function RatePlayersPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const router = useRouter();
-  const { user } = useAuthStore();
-  const { fetchMatchById } = useMatchStore();
-  const [match, setMatch] = useState<Match | null>(null);
-  const [scores, setScores] = useState<Record<string, number>>({});
-  const [rated, setRated] = useState<Set<string>>(new Set());
-  const [skipped, setSkipped] = useState<Set<string>>(new Set());
+  const rating = useRateMatch(id);
+  const { match, assignment, assignedAll, extraAll } = rating;
+
   const [showExtra, setShowExtra] = useState(false);
-  const [submittingDone, setSubmittingDone] = useState(false);
 
-  const loadMatch = useCallback(async () => {
-    const data = await fetchMatchById(id);
-    setMatch(data);
-  }, [id, fetchMatchById]);
-
-  useEffect(() => { loadMatch(); }, [loadMatch]);
-
-  const { submitRating, submitting } = useRatings(id, match?.sport);
-
-  const myRow = match?.match_participants?.find((p) => p.player_id === user?.id);
-
-  // Balanced assignment: half teammates, half opponents, capped per side.
-  const assignment = useMemo(() => {
-    if (!match || !user) return null;
-    return getReviewAssignment(
-      match.match_participants ?? [],
-      user.id,
-      myRow?.team_id,
-      match.id,
-    );
-  }, [match, user, myRow?.team_id]);
-
-  const assignedAll = useMemo<MatchParticipant[]>(
-    () => assignment ? [...assignment.assignedTeammates, ...assignment.assignedOpponents] : [],
-    [assignment],
-  );
-  const extraAll = useMemo<MatchParticipant[]>(
-    () => assignment ? [...assignment.extraTeammates, ...assignment.extraOpponents] : [],
-    [assignment],
-  );
-
-  // Resume: load any ratings this user already submitted for this match
-  useEffect(() => {
-    if (!user?.id) return;
-    ratingService.listSubmittedScores(id, user.id)
-      .then((data) => {
-        if (!data?.length) return;
-        setScores((prev) => {
-          const loaded: Record<string, number> = {};
-          data.forEach((r) => { loaded[r.rated_player_id] = r.score; });
-          return { ...loaded, ...prev };
-        });
-        setRated(new Set(data.map((r) => r.rated_player_id)));
-      });
-  }, [user?.id, id]);
-
-  const canDone =
-    assignedAll.length === 0 ||
-    assignedAll.every((p) => rated.has(p.player_id) || skipped.has(p.player_id));
-
-  const handleRate = async (p: MatchParticipant) => {
-    if (!user) return;
-    if (match && isReviewWindowClosed(match.scheduled_at)) {
-      toast.error(`Reviews close ${REVIEW_WINDOW_DAYS} days after the match`);
-      return;
-    }
-    const score = scores[p.player_id];
-    if (!score || score < 1 || score > 10) {
-      toast.error('Please enter a score between 1 and 10');
-      return;
-    }
-    const ok = await submitRating(user.id, p.player_id, score);
-    if (ok) {
-      setRated((prev) => new Set([...prev, p.player_id]));
-      setSkipped((prev) => { const n = new Set(prev); n.delete(p.player_id); return n; });
-    } else {
-      toast.error('Failed to submit rating');
-    }
-  };
-
-  const handleDone = async () => {
-    if (!user) return;
-    setSubmittingDone(true);
-    await participantService.markRatingSubmitted(id, user.id);
-    setSubmittingDone(false);
-    router.push('/');
-  };
-
-  if (!match) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-      </div>
-    );
-  }
+  if (!match) return <PageLoading />;
 
   if (isReviewWindowClosed(match.scheduled_at)) {
     return (
-      <div className="max-w-xl mx-auto flex flex-col gap-6">
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-text-muted hover:text-text transition-colors w-fit">
-          <ChevronLeft className="w-4 h-4" />
-          <span className="text-sm">Back</span>
-        </button>
-        <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
-          <Clock className="w-12 h-12 text-text-muted" />
-          <h2 className="font-heading font-bold text-xl text-text">Review period ended</h2>
-          <p className="text-text-muted text-sm">
-            Reviews close {REVIEW_WINDOW_DAYS} days after the match. Skipped reviews
-            don&apos;t affect anyone&apos;s rating.
-          </p>
-          <Button onClick={() => router.push('/')}>Back to home</Button>
-        </div>
-      </div>
+      <RateClosedScreen icon={Clock} title="Review period ended">
+        Reviews close {REVIEW_WINDOW_DAYS} days after the match. Skipped reviews
+        don&apos;t affect anyone&apos;s rating.
+      </RateClosedScreen>
     );
   }
 
-  if (myRow?.rating_submitted) {
+  if (rating.myRow?.rating_submitted) {
     return (
-      <div className="max-w-xl mx-auto flex flex-col gap-6">
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-text-muted hover:text-text transition-colors w-fit">
-          <ChevronLeft className="w-4 h-4" />
-          <span className="text-sm">Back</span>
-        </button>
-        <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
-          <CheckCircle className="w-12 h-12 text-success" />
-          <h2 className="font-heading font-bold text-xl text-text">Ratings submitted</h2>
-          <p className="text-text-muted text-sm">You&apos;ve already rated your players for this match.</p>
-          <Button onClick={() => router.push('/')}>Back to home</Button>
-        </div>
-      </div>
+      <RateClosedScreen icon={CheckCircle} iconClassName="text-success" title="Ratings submitted">
+        You&apos;ve already rated your players for this match.
+      </RateClosedScreen>
     );
   }
-
-  const renderPlayerRow = (p: MatchParticipant, showSkip: boolean) => {
-    const isRated = rated.has(p.player_id);
-    return (
-      <div
-        key={p.id}
-        className={`border rounded-xl p-4 flex items-center gap-4 transition-colors ${
-          isRated ? 'bg-success/5 border-success/30' : 'bg-surface border-border'
-        }`}
-      >
-        <Avatar src={p.profiles?.avatar_url} name={p.profiles?.username} size="md" />
-        <div className="flex-1">
-          <p className="font-medium text-text">{p.profiles?.username ?? 'Player'}</p>
-          {isRated && <p className="text-xs text-success mt-0.5">Rated ✓</p>}
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            min="1" max="10" step="0.1"
-            placeholder="Score"
-            value={scores[p.player_id] ?? ''}
-            onChange={(e) => setScores((prev) => ({ ...prev, [p.player_id]: parseFloat(e.target.value) }))}
-            className={`w-20 px-3 py-2 rounded-lg bg-surface-alt border text-text text-sm text-center focus:outline-none focus:border-brand ${
-              isRated ? 'border-success/50' : 'border-border'
-            }`}
-          />
-          <Button
-            size="sm"
-            loading={submitting}
-            variant={isRated ? 'secondary' : 'primary'}
-            onClick={() => handleRate(p)}
-          >
-            {isRated ? 'Update' : 'Rate'}
-          </Button>
-          {showSkip && !isRated && (
-            <button
-              onClick={() => setSkipped((prev) => new Set([...prev, p.player_id]))}
-              className="text-xs text-text-muted hover:text-text transition-colors px-2 py-1.5"
-            >
-              Skip
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const section = (label: string, players: MatchParticipant[], showSkip: boolean) =>
-    players.length > 0 && (
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-text-muted uppercase tracking-wide px-1">{label}</p>
-        {players.map((p) => renderPlayerRow(p, showSkip))}
-      </div>
-    );
 
   const nTeam = assignment?.assignedTeammates.length ?? 0;
   const nOpp = assignment?.assignedOpponents.length ?? 0;
 
+  // Props every RateSection needs, so each call site stays readable.
+  const sectionProps = {
+    scores: rating.scores,
+    rated: rating.rated,
+    submitting: rating.submitting,
+    onScoreChange: rating.setScore,
+    onRate: rating.rate,
+    onSkip: rating.skip,
+  };
+
   return (
     <div className="max-w-xl mx-auto flex flex-col gap-6">
-      <button onClick={() => router.back()} className="flex items-center gap-2 text-text-muted hover:text-text transition-colors w-fit">
-        <ChevronLeft className="w-4 h-4" />
-        <span className="text-sm">Back</span>
-      </button>
+      <BackButton />
 
       <div>
         <h1 className="font-heading font-bold text-2xl text-text">Rate Players</h1>
@@ -232,8 +71,18 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          {section('Your team', assignment!.assignedTeammates, true)}
-          {section('Opponents', assignment!.assignedOpponents, true)}
+          <RateSection
+            label="Your team"
+            players={assignment?.assignedTeammates ?? []}
+            showSkip
+            {...sectionProps}
+          />
+          <RateSection
+            label="Opponents"
+            players={assignment?.assignedOpponents ?? []}
+            showSkip
+            {...sectionProps}
+          />
 
           {!showExtra && extraAll.length > 0 && (
             <button
@@ -246,14 +95,26 @@ export default function RatePlayersPage({ params }: { params: Promise<{ id: stri
 
           {showExtra && (
             <div className="flex flex-col gap-6 border-t border-border pt-6">
-              <p className="text-xs text-text-muted px-1">Optional — review anyone else from the match.</p>
-              {section('More teammates', assignment!.extraTeammates, false)}
-              {section('More opponents', assignment!.extraOpponents, false)}
+              <p className="text-xs text-text-muted px-1">
+                Optional — review anyone else from the match.
+              </p>
+              <RateSection
+                label="More teammates"
+                players={assignment?.extraTeammates ?? []}
+                showSkip={false}
+                {...sectionProps}
+              />
+              <RateSection
+                label="More opponents"
+                players={assignment?.extraOpponents ?? []}
+                showSkip={false}
+                {...sectionProps}
+              />
             </div>
           )}
 
-          {canDone && (
-            <Button loading={submittingDone} onClick={handleDone} className="w-full mt-2">
+          {rating.canFinish && (
+            <Button loading={rating.submittingDone} onClick={rating.finish} className="w-full mt-2">
               Done
             </Button>
           )}
