@@ -15,10 +15,11 @@ export enum NotificationType {
   MatchHappenedCheck = 'match_happened_check',
   ResultDisputed = 'result_disputed',
   /**
-   * Legacy: nothing emits this any more — MatchCompleted replaced it. Kept so
-   * that pre-existing rows still render and still satisfy the CHECK constraint.
-   * Safe to delete once `SELECT DISTINCT type FROM notifications` confirms no
-   * row uses it.
+   * Legacy: nothing emits this any more — MatchCompleted replaced it.
+   *
+   * Do NOT delete. Confirmed 2026-10-28 that live rows still use it, so the
+   * notifications page needs its branch (it routes to the rate screen) and the
+   * CHECK constraint needs the value.
    */
   RatePlayers = 'rate_players',
 }

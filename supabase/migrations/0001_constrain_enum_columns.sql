@@ -41,11 +41,10 @@
 -- instead of aborting everything. If one fails, fix or delete the offending
 -- rows and re-run just that VALIDATE.
 --
--- Pay particular attention to notifications.type: 'rate_players' is included
--- because the notifications page still has a branch for it even though nothing
--- emits it any more (match_completed replaced it). If the DISTINCT query shows
--- no row uses it, drop it from both this constraint and
--- shared/enums/notificationType.ts.
+-- notifications.type includes 'rate_players', which nothing emits any more
+-- (match_completed replaced it). Keep it: the DISTINCT query was run against
+-- the live project on 2026-10-28 and rows do still use it, so dropping the
+-- value would make this constraint reject existing data.
 --
 -- KEEPING THE TWO IN SYNC
 --
@@ -109,7 +108,7 @@ ALTER TABLE notifications
     'match_completed',        -- inserted by notify_match_completion()
     'match_happened_check',   -- inserted by send_match_confirmation_check()
     'result_disputed',
-    'rate_players'            -- legacy, nothing emits this any more
+    'rate_players'            -- legacy, but live rows still use it
   )) NOT VALID;
 ALTER TABLE notifications VALIDATE CONSTRAINT notifications_type_check;
 
