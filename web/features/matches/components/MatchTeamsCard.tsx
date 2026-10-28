@@ -1,5 +1,5 @@
 import { Match } from '@matchd/shared/types';
-import { TeamSlots } from '@/components/match/TeamSlots';
+import { TeamSlots } from './TeamSlots';
 
 export function MatchTeamsCard({ match }: { match: Match }) {
   if (!match.match_teams?.length) return null;

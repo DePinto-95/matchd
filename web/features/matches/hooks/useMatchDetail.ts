@@ -12,6 +12,13 @@ import { useFriendStore } from '@/stores/friendStore';
 import { useMatchRealtime } from '@/hooks/useRealtime';
 import { getActualOccupancy, getTeamOccupancy } from '../lib/occupancy';
 
+export interface ConfirmationRequest {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void | Promise<void>;
+}
+
 /**
  * Everything the match detail page needs: the match itself, the derived values
  * that depend on it, and the actions that change it.
@@ -31,6 +38,10 @@ export const useMatchDetail = (id: string) => {
   const [joining, setJoining] = useState(false);
   const [updatingSquad, setUpdatingSquad] = useState(false);
   const [codeVerified, setCodeVerified] = useState(false);
+
+  // Destructive actions ask first. The page renders whatever is pending here
+  // as a ConfirmDialog, replacing the native confirm() (MD-23).
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
 
   const loadMatch = useCallback(async () => {
     setMatch(await fetchMatchById(id));
@@ -132,16 +143,19 @@ export const useMatchDetail = (id: string) => {
     loadMatch();
   };
 
-  const leave = async () => {
-    if (!match || !user) return;
-    if (!confirm('Are you sure you want to leave this match?')) return;
-
-    const heldSpots = myCurrentExtraSpots + myCurrentExtraSpotOpponent;
-    await participantService.leave(match.id, user.id, heldSpots);
-
-    toast.success('You left the match — all your reserved spots were released');
-    loadMatch();
-  };
+  const leave = () =>
+    setConfirmation({
+      title: 'Leave this match?',
+      message: 'Your place and any spots you reserved will be released for others to take.',
+      confirmLabel: 'Leave match',
+      onConfirm: async () => {
+        if (!match || !user) return;
+        const heldSpots = myCurrentExtraSpots + myCurrentExtraSpotOpponent;
+        await participantService.leave(match.id, user.id, heldSpots);
+        toast.success('You left the match — all your reserved spots were released');
+        loadMatch();
+      },
+    });
 
   const updateSquadSpots = async (totalOwnSpots: number, opponentSpots: number) => {
     if (!match || !user || !myRow) return;
@@ -182,13 +196,18 @@ export const useMatchDetail = (id: string) => {
     return true;
   };
 
-  const cancelMatch = async () => {
-    if (!match) return;
-    if (!confirm('This will cancel the match for all participants. Continue?')) return;
-    await matchService.updateStatus(match.id, MatchStatus.Cancelled);
-    toast.success('Match cancelled');
-    router.push('/');
-  };
+  const cancelMatch = () =>
+    setConfirmation({
+      title: 'Cancel this match?',
+      message: 'This cancels the match for everyone who joined. It cannot be undone.',
+      confirmLabel: 'Cancel match',
+      onConfirm: async () => {
+        if (!match) return;
+        await matchService.updateStatus(match.id, MatchStatus.Cancelled);
+        toast.success('Match cancelled');
+        router.push('/');
+      },
+    });
 
   const confirmMatchHappened = async () => {
     if (!match) return;
@@ -198,13 +217,18 @@ export const useMatchDetail = (id: string) => {
     loadMatch();
   };
 
-  const confirmMatchDidntHappen = async () => {
-    if (!match) return;
-    if (!confirm('This will cancel the match for all participants. Continue?')) return;
-    await matchService.updateStatus(match.id, MatchStatus.Cancelled);
-    toast.success('Match marked as not happened.');
-    router.push('/');
-  };
+  const confirmMatchDidntHappen = () =>
+    setConfirmation({
+      title: 'Mark as not played?',
+      message: 'This cancels the match for everyone. No ratings or result will be recorded.',
+      confirmLabel: "It didn't happen",
+      onConfirm: async () => {
+        if (!match) return;
+        await matchService.updateStatus(match.id, MatchStatus.Cancelled);
+        toast.success('Match marked as not happened.');
+        router.push('/');
+      },
+    });
 
   const share = () => {
     if (!match) return;
@@ -259,6 +283,8 @@ export const useMatchDetail = (id: string) => {
 
     joining,
     updatingSquad,
+    confirmation,
+    dismissConfirmation: () => setConfirmation(null),
 
     join,
     leave,

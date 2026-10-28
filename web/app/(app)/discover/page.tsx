@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
+import { SportType } from '@matchd/shared/enums';
 import { useMatchStore } from '@/stores/matchStore';
 import { useAuthStore } from '@/stores/authStore';
-import { MatchCard } from '@/components/match/MatchCard';
-import { FilterBar } from '@/components/match/FilterBar';
-import { Input } from '@/components/ui/Input';
-import { SportType } from '@matchd/shared/types';
+import { FilterBar, MatchGrid } from '@/features/matches/components';
+import { filterVisibleMatches } from '@/features/matches/lib/occupancy';
 
 export default function DiscoverPage() {
   const { matches, loading, filters, setFilters, fetchMatches } = useMatchStore();
@@ -18,26 +17,21 @@ export default function DiscoverPage() {
     fetchMatches();
   }, [fetchMatches, filters]);
 
-  // Upcoming full matches are hidden unless the current user is already in them.
-  const filtered = matches
-    .filter((match) => {
-      if (filters.showPast) return true;
-      const actual = match.match_participants
-        ? match.match_participants.reduce(
-            (sum, p) => sum + 1 + (p.extra_spots ?? 0) + (p.extra_spots_opponent ?? 0),
-            0
-          )
-        : match.current_players;
-      const isFull = actual >= match.max_players;
-      if (!isFull) return true;
-      return match.match_participants?.some((p) => p.player_id === user?.id) ?? false;
-    })
-    .filter((m) =>
-      search === '' ||
-      m.title.toLowerCase().includes(search.toLowerCase()) ||
-      m.location_name.toLowerCase().includes(search.toLowerCase()) ||
-      m.venues?.name?.toLowerCase().includes(search.toLowerCase())
-    );
+  const term = search.toLowerCase();
+  const filtered = filterVisibleMatches(matches, user?.id, filters.showPast).filter(
+    (m) =>
+      term === '' ||
+      m.title.toLowerCase().includes(term) ||
+      m.location_name.toLowerCase().includes(term) ||
+      m.venues?.name?.toLowerCase().includes(term)
+  );
+
+  const emptyState = (
+    <div className="text-center py-16">
+      <span className="text-4xl">🔍</span>
+      <p className="text-text-muted mt-3 text-sm">No matches found for your search</p>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -62,27 +56,13 @@ export default function DiscoverPage() {
         onSelect={(sport: SportType | 'all') => setFilters({ sport })}
       />
 
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-surface border border-border rounded-2xl h-44 animate-pulse" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <span className="text-4xl">🔍</span>
-          <p className="text-text-muted mt-3 text-sm">No matches found for your search</p>
-        </div>
-      ) : (
-        <>
-          <p className="text-text-muted text-sm">{filtered.length} match{filtered.length !== 1 ? 'es' : ''} found</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((match) => (
-              <MatchCard key={match.id} match={match} />
-            ))}
-          </div>
-        </>
+      {!loading && filtered.length > 0 && (
+        <p className="text-text-muted text-sm">
+          {filtered.length} match{filtered.length !== 1 ? 'es' : ''} found
+        </p>
       )}
+
+      <MatchGrid matches={filtered} loading={loading} empty={emptyState} />
     </div>
   );
 }

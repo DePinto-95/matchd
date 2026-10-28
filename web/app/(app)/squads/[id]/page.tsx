@@ -7,6 +7,7 @@ import { Squad } from '@matchd/shared/types';
 import { Avatar } from '@/components/ui/Avatar';
 import Link from 'next/link';
 import { BackButton } from '@/components/ui/BackButton';
+import { PageLoading } from '@/components/ui/PageLoading';
 
 export default function SquadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -21,11 +22,7 @@ export default function SquadPage({ params }: { params: Promise<{ id: string }> 
   }, [id]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-      </div>
-    );
+    return <PageLoading />;
   }
 
   if (!squad) return (

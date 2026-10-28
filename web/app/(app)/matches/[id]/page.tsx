@@ -18,6 +18,7 @@ import {
   SquadSpotsPanel,
 } from '@/features/matches/components';
 import { PageLoading } from '@/components/ui/PageLoading';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { BackButton } from '@/components/ui/BackButton';
 
 export default function MatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -143,6 +144,20 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
         onLeave={detail.leave}
         onCancelMatch={detail.cancelMatch}
       />
+
+      {detail.confirmation && (
+        <ConfirmDialog
+          title={detail.confirmation.title}
+          message={detail.confirmation.message}
+          confirmLabel={detail.confirmation.confirmLabel}
+          destructive
+          onConfirm={async () => {
+            await detail.confirmation?.onConfirm();
+            detail.dismissConfirmation();
+          }}
+          onCancel={detail.dismissConfirmation}
+        />
+      )}
     </div>
   );
 }

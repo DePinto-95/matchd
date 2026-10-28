@@ -2,38 +2,22 @@ import Link from 'next/link';
 import { MapPin, Clock, Users, Lock } from 'lucide-react';
 import { format } from 'date-fns';
 import { Match } from '@matchd/shared/types';
+import { SportType } from '@matchd/shared/enums';
 import { SPORTS } from '@matchd/shared/constants/sports';
 import { Badge } from '@/components/ui/Badge';
+import { getMatchOccupancy } from '../lib/occupancy';
 
 interface MatchCardProps {
   match: Match;
 }
 
-function getSportColor(sport: string): string {
-  const colors: Record<string, string> = {
-    football: '#22c55e',
-    mini_football_5v5: '#3b82f6',
-    mini_football_8v8: '#8b5cf6',
-    padel: '#f59e0b',
-    tennis: '#ef4444',
-    basketball: '#f97316',
-    volleyball: '#06b6d4',
-    other: '#6b7280',
-  };
-  return colors[sport] ?? '#6b7280';
-}
-
 export function MatchCard({ match }: MatchCardProps) {
-  const sport = SPORTS[match.sport];
-  const actualPlayers = match.match_participants
-    ? match.match_participants.reduce(
-        (sum, p) => sum + 1 + (p.extra_spots ?? 0) + (p.extra_spots_opponent ?? 0),
-        0
-      )
-    : match.current_players;
+  // Fall back to Other rather than crashing the whole grid if the DB ever
+  // holds a sport this build does not know about (MD-10).
+  const sport = SPORTS[match.sport] ?? SPORTS[SportType.Other];
+  const actualPlayers = getMatchOccupancy(match);
   const spotsLeft = match.max_players - actualPlayers;
   const isFull = actualPlayers >= match.max_players;
-  const color = getSportColor(match.sport);
 
   return (
     <Link
@@ -41,7 +25,7 @@ export function MatchCard({ match }: MatchCardProps) {
       className="group block bg-surface border border-border rounded-2xl overflow-hidden hover:border-brand/50 transition-all hover:shadow-lg hover:shadow-brand/5"
     >
       {/* Top color strip */}
-      <div className="h-1" style={{ backgroundColor: color }} />
+      <div className="h-1" style={{ backgroundColor: sport.color }} />
 
       <div className="p-5">
         {/* Header */}

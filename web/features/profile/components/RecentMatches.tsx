@@ -1,5 +1,5 @@
 import { Match } from '@matchd/shared/types';
-import { MatchCard } from '@/components/match/MatchCard';
+import { MatchCard } from '@/features/matches/components';
 
 const MAX_SHOWN = 4;
 

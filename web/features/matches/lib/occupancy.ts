@@ -1,4 +1,4 @@
-import { MatchParticipant } from '@matchd/shared/types';
+import { Match, MatchParticipant } from '@matchd/shared/types';
 
 /**
  * How many places a match actually has taken.
@@ -29,4 +29,31 @@ export const getTeamOccupancy = (
     teamMembers.reduce((sum, p) => sum + 1 + (p.extra_spots ?? 0), 0) +
     otherMembers.reduce((sum, p) => sum + (p.extra_spots_opponent ?? 0), 0)
   );
+};
+
+/**
+ * Occupancy for a match from a list query, which may or may not have joined
+ * the participant rows. Falls back to the stored counter when it has not.
+ */
+export const getMatchOccupancy = (match: Match): number =>
+  match.match_participants
+    ? getActualOccupancy(match.match_participants)
+    : match.current_players;
+
+/**
+ * Feed rule: an upcoming match that is already full is hidden from everyone
+ * except the players in it, since nobody else could join it anyway. Past
+ * matches are always shown.
+ */
+export const filterVisibleMatches = (
+  matches: Match[],
+  userId: string | undefined,
+  showPast: boolean
+): Match[] => {
+  if (showPast) return matches;
+
+  return matches.filter((match) => {
+    if (getMatchOccupancy(match) < match.max_players) return true;
+    return match.match_participants?.some((p) => p.player_id === userId) ?? false;
+  });
 };
