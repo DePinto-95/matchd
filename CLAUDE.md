@@ -105,7 +105,6 @@ A feature folder has an `index.ts` barrel, so
 - Browser client: `lib/supabase/client.ts` (uses `createBrowserClient` from `@supabase/ssr`) — imported only by `web/services/index.ts` and the store wrappers
 - Server client: `lib/supabase/server.ts` — for Server Components, currently unused. `app/auth/callback/route.ts` deliberately does **not** use it: that route must set cookies on a redirect response it builds itself, which the `next/headers` cookie store cannot do.
 - The schema lives in `supabase/` — start at `supabase/README.md`, which gives the apply order and warns that the folder is not replayable in filename order.
-- Server client: `lib/supabase/server.ts` (uses `createServerClient` + Next.js cookies)
 - All DB operations go through the Supabase JS client — no separate API layer.
 
 Key tables:
@@ -116,7 +115,7 @@ Key tables:
 - `player_ratings` — one row per `(player_id, sport)`; DB trigger recalculates weighted rolling average on each `match_ratings` insert. **Ratings start at 2.0/10**, not 5.0 — this doc said 5.0 for a long time and was wrong (MD-12); every SQL seed uses 2.0, and matches gate joining on `min_rating`
 - `venues` — owned by `venue` accounts; matches link via `venue_id`
 - `friendships` — `requester_id`, `addressee_id`, `status: 'pending' | 'accepted' | 'blocked'`. Unique constraint on (requester_id, addressee_id). RLS: both parties can SELECT/DELETE; only addressee can UPDATE (accept); only requester can INSERT.
-- `notifications` — `user_id`, `type`, `title`, `body`, `data` (jsonb), `read`. Types in use: `friend_request`, `friend_accepted`, `match_invite`. RLS: any authenticated user can INSERT (needed to send notifications to others); users can only SELECT/UPDATE/DELETE their own.
+- `notifications` — `user_id`, `type`, `title`, `body`, `data` (jsonb), `read`. Types are the `NotificationType` enum: `friend_request`, `friend_accepted`, `match_invite`, `match_completed`, `match_happened_check`, `result_disputed` (plus legacy `rate_players`). Constrained by a CHECK in `supabase/migrations/0001_constrain_enum_columns.sql`. RLS: any authenticated user can INSERT (needed to send notifications to others); users can only SELECT/UPDATE/DELETE their own.
 - `user_reports` — `reporter_id`, `reported_id`, `reason`, `details`. Unique constraint prevents duplicate reports. No SELECT policy (admin only).
 
 Custom DB functions:
@@ -235,7 +234,7 @@ Database counterparts: `sport_type`, `match_status`, `account_type` and `team_si
 
 **Home feed filtering**: Default shows upcoming matches (`status IN ('open','full')` and `scheduled_at >= now`). A History toggle switches to past matches (`scheduled_at < now`, descending order).
 
-**Friend system**: Friendships are directional (requester → addressee) then mutual on accept. `useFriendStore().getRelation(userId)` returns `{ kind: 'none' | 'pending_sent' | 'pending_received' | 'friends', friendshipId }` — use this to drive friend action buttons on any profile. Sending a request / accepting also inserts a `notifications` row for the other user.
+**Friend system**: Friendships are directional (requester → addressee) then mutual on accept. `useFriendStore().getRelation(userId)` returns `{ kind: FriendRelationKind, friendshipId }` — use this to drive friend action buttons on any profile. Sending a request / accepting also inserts a `notifications` row for the other user.
 
 **Match sharing with friends**: Call `useFriendStore().sendMatchInvites(senderUsername, friendIds[], match)` — bulk-inserts `match_invite` notifications. The notifications page navigates to the match on click.
 
