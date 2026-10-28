@@ -6,12 +6,11 @@ import { ChevronLeft, UserPlus, UserCheck, UserX, Clock, Flag } from 'lucide-rea
 import { useProfile } from '@/hooks/useProfile';
 import { useAuthStore } from '@/stores/authStore';
 import { useFriendStore } from '@/stores/friendStore';
-import { SPORTS } from '@matchd/shared/constants/sports';
-import { getRatingColor } from '@matchd/shared/constants/theme';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { MatchCard } from '@/components/match/MatchCard';
+import { RatingsCard } from '@/features/profile/components';
 import { ReportReason } from '@matchd/shared/enums';
 import { FriendRelationKind } from '@matchd/shared/enums';
 
@@ -156,48 +155,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {ratings.length > 0 && (
-        <div className="bg-surface border border-border rounded-2xl p-6">
-          <h2 className="font-heading font-bold text-lg text-text mb-4">Ratings</h2>
-          <div className="flex flex-col gap-4">
-            {ratings.map((r) => {
-              const sport = SPORTS[r.sport];
-              const played = playedCounts[r.sport] ?? 0;
-              const unlocked = played >= 5;
-              const color = getRatingColor(r.rating);
-              const remaining = 5 - played;
-              return (
-                <div key={r.id} className="flex items-center gap-3">
-                  <span className={`text-xl${unlocked ? '' : ' opacity-40'}`}>{sport?.emoji ?? '🏅'}</span>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className={`text-sm font-medium${unlocked ? ' text-text' : ' text-text-muted'}`}>
-                        {sport?.label ?? r.sport}
-                      </span>
-                      {unlocked
-                        ? <span className="text-sm font-bold" style={{ color }}>{r.rating.toFixed(1)}</span>
-                        : <span className="text-xs text-text-muted">{played} / 5</span>
-                      }
-                    </div>
-                    <div className="h-1.5 bg-surface-alt rounded-full overflow-hidden">
-                      {unlocked
-                        ? <div className="h-full rounded-full" style={{ width: `${(r.rating / 10) * 100}%`, backgroundColor: color }} />
-                        : <div className="h-full rounded-full bg-text-muted/30" style={{ width: `${(played / 5) * 100}%` }} />
-                      }
-                    </div>
-                    <p className="text-xs text-text-muted mt-0.5">
-                      {unlocked
-                        ? `${played} matches · ${r.wins} confirmed wins`
-                        : `${remaining} more ${remaining === 1 ? 'match' : 'matches'} to go`
-                      }
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <RatingsCard ratings={ratings} playedCounts={playedCounts} />
 
       {matchHistory.length > 0 && (
         <div>
