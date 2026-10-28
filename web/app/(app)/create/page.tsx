@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { SPORTS, SPORT_LIST } from '@matchd/shared/constants/sports';
 import { generateInviteCode, withTimeout, TimeoutError } from '@matchd/shared/lib/helpers';
-import { SportType } from '@matchd/shared/types';
+import { MatchStatus, ParticipantStatus, SportType, TeamSide } from '@matchd/shared/enums';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DatePicker } from '@/components/ui/DatePicker';
@@ -130,7 +130,7 @@ export default function CreateMatchPage() {
             max_rating: maxR,
             is_private: isPrivate,
             invite_code: inviteCode,
-            status: 'open',
+            status: MatchStatus.Open,
           })
           .select()
           .single(),
@@ -144,8 +144,8 @@ export default function CreateMatchPage() {
 
       await withTimeout(
         supabase.from('match_teams').insert([
-          { match_id: match.id, side: 'home', name: 'Home' },
-          { match_id: match.id, side: 'away', name: 'Away' },
+          { match_id: match.id, side: TeamSide.Home, name: 'Home' },
+          { match_id: match.id, side: TeamSide.Away, name: 'Away' },
         ]),
         15000
       );
@@ -155,14 +155,14 @@ export default function CreateMatchPage() {
         15000
       );
 
-      const homeTeam = teams?.find((t: { side: string }) => t.side === 'home');
+      const homeTeam = teams?.find((t: { side: TeamSide }) => t.side === TeamSide.Home);
       if (homeTeam) {
         await withTimeout(
           supabase.from('match_participants').insert({
             match_id: match.id,
             player_id: user.id,
             team_id: homeTeam.id,
-            status: 'confirmed',
+            status: ParticipantStatus.Confirmed,
           }),
           15000
         );

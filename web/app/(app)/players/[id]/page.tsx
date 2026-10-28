@@ -12,13 +12,14 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { MatchCard } from '@/components/match/MatchCard';
-import type { ReportReason } from '@matchd/shared/types';
+import { ReportReason } from '@matchd/shared/enums';
+import { FriendRelationKind } from '@matchd/shared/enums';
 
 const REPORT_REASONS: Record<ReportReason, string> = {
-  spam_scam: 'Spam / Scam',
-  inappropriate_behavior: 'Inappropriate Behavior',
-  fake_profile: 'Fake Profile',
-  other: 'Other',
+  [ReportReason.SpamScam]: 'Spam / Scam',
+  [ReportReason.InappropriateBehavior]: 'Inappropriate Behavior',
+  [ReportReason.FakeProfile]: 'Fake Profile',
+  [ReportReason.Other]: 'Other',
 };
 
 export default function PlayerProfilePage({ params }: { params: Promise<{ id: string }> }) {
@@ -30,7 +31,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
 
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
-  const [reportReason, setReportReason] = useState<ReportReason>('spam_scam');
+  const [reportReason, setReportReason] = useState<ReportReason>(ReportReason.SpamScam);
   const [reportDetails, setReportDetails] = useState('');
   const [reporting, setReporting] = useState(false);
 
@@ -45,10 +46,10 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
   const handleFriendAction = async () => {
     if (!myProfile || !relation) return;
     setActingOn(id);
-    if (relation.kind === 'none') await sendRequest(myProfile.id, id, myProfile.username);
-    else if (relation.kind === 'pending_sent') await cancelRequest(relation.friendshipId);
-    else if (relation.kind === 'pending_received') await acceptRequest(relation.friendshipId, myProfile.username);
-    else if (relation.kind === 'friends') await removeFriend(relation.friendshipId);
+    if (relation.kind === FriendRelationKind.None) await sendRequest(myProfile.id, id, myProfile.username);
+    else if (relation.kind === FriendRelationKind.PendingSent) await cancelRequest(relation.friendshipId);
+    else if (relation.kind === FriendRelationKind.PendingReceived) await acceptRequest(relation.friendshipId, myProfile.username);
+    else if (relation.kind === FriendRelationKind.Friends) await removeFriend(relation.friendshipId);
     setActingOn(null);
   };
 
@@ -99,15 +100,15 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
         {!isOwnProfile && relation && (
           <div className="flex items-center gap-3 mt-5 pt-5 border-t border-border">
             <Button
-              variant={relation.kind === 'friends' ? 'secondary' : 'primary'}
+              variant={relation.kind === FriendRelationKind.Friends ? 'secondary' : 'primary'}
               size="sm"
               loading={actingOn === id}
               onClick={handleFriendAction}
             >
-              {relation.kind === 'none' && <><UserPlus className="w-4 h-4" /> Add Friend</>}
-              {relation.kind === 'pending_sent' && <><Clock className="w-4 h-4" /> Pending</>}
-              {relation.kind === 'pending_received' && <><UserCheck className="w-4 h-4" /> Accept</>}
-              {relation.kind === 'friends' && <><UserX className="w-4 h-4" /> Remove Friend</>}
+              {relation.kind === FriendRelationKind.None && <><UserPlus className="w-4 h-4" /> Add Friend</>}
+              {relation.kind === FriendRelationKind.PendingSent && <><Clock className="w-4 h-4" /> Pending</>}
+              {relation.kind === FriendRelationKind.PendingReceived && <><UserCheck className="w-4 h-4" /> Accept</>}
+              {relation.kind === FriendRelationKind.Friends && <><UserX className="w-4 h-4" /> Remove Friend</>}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setReportOpen(true)}>
               <Flag className="w-4 h-4" />

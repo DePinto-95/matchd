@@ -33,7 +33,8 @@ npm run build   # build for production
 ## Shared code (`shared/`)
 
 `@matchd/shared` is an npm workspace package holding code with zero framework dependency — safe to use from both the Next.js app and the Expo/React Native app:
-- `shared/types` — all DB/domain TypeScript types
+- `shared/enums` — **one file per enum**, plus an `index.ts` barrel (see "Enums" below)
+- `shared/types` — DB/domain TypeScript types, split one file per domain (`match.ts`, `profile.ts`, `friend.ts`, …). `index.ts` re-exports every type *and* every enum, so `@matchd/shared/types` remains a single valid entry point
 - `shared/constants` — `sports.ts`, `theme.ts`
 - `shared/lib/helpers.ts` — pure date/string/formatting helpers
 - `shared/stores` — zustand store **factories** (`createAuthStore(supabase)`, `createMatchStore(supabase, options)`, `createNotificationStore(supabase)`). Each app's own `stores/*.ts` is a 2-3 line wrapper that injects its own platform-specific Supabase client (and, for `web`, a `sonner` toast callback) and exports the bound hook.
@@ -112,6 +113,27 @@ Design tokens:
 
 ### Sport Config
 All sport metadata lives in `shared/constants/sports.ts` (imported as `@matchd/shared/constants/sports`). Reference `SPORTS[sport]` everywhere — never hardcode sport-specific values inline.
+
+## Enums
+
+Every constrained set of values is a **real TypeScript `enum`, one per file**, in `shared/enums/` — never an inline string-literal union and never a bare string. Import from `@matchd/shared/enums`:
+
+```ts
+import { MatchStatus, TeamSide } from '@matchd/shared/enums';
+
+if (match.status === MatchStatus.Open) { ... }
+await supabase.from('matches').update({ status: MatchStatus.Cancelled });
+```
+
+Current enums: `SportType`, `AccountType`, `MatchStatus`, `TeamSide`, `MatchResultStatus`, `MatchWinnerSide`, `ParticipantStatus`, `FriendshipStatus`, `BookingStatus`, `NotificationType`, `ReportReason`, `FriendRelationKind`.
+
+**Rules:**
+- Never write the raw string (`'open'`, `'confirmed'`, `'player'`) anywhere — including inside `supabase.insert()`/`.update()`/`.eq()` calls, which are untyped and so will *not* be caught by the compiler.
+- Each enum file's doc comment names its database counterpart. Keep the two in sync: adding a value means adding it to the DB `CHECK` constraint (or the Postgres enum type) in the same unit of work.
+- `Record<SomeEnum, X>` maps use computed keys (`[SportType.Football]: …`) so the compiler enforces exhaustiveness — see `shared/constants/sports.ts`.
+- Zod schemas take the enum object directly: `z.enum(AccountType)`.
+
+Database counterparts: `sport_type`, `match_status`, `account_type` and `team_side` are real Postgres enum types. The rest are `TEXT` columns with a `CHECK (col IN (...))` constraint. `FriendRelationKind` is client-only (derived from `friendships` rows).
 
 ## Key Patterns
 

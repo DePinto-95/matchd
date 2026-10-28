@@ -1,4 +1,5 @@
 import { MatchParticipant } from '@matchd/shared/types';
+import { ParticipantStatus } from '@matchd/shared/enums';
 
 /**
  * Review assignment.
@@ -72,7 +73,7 @@ export function getReviewAssignment(
   myTeamId: string | null | undefined,
   matchId: string,
 ): ReviewAssignment {
-  const confirmed = participants.filter((p) => p.status === 'confirmed');
+  const confirmed = participants.filter((p) => p.status === ParticipantStatus.Confirmed);
 
   // My team (including me) and the opponent team, canonically ordered then
   // seeded-shuffled so the same order is produced on every client.

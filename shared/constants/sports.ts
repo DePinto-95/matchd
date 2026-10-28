@@ -1,4 +1,4 @@
-import { SportType } from '../types';
+import { SportType } from '../enums';
 
 export interface SportConfig {
   id: SportType;
@@ -11,8 +11,8 @@ export interface SportConfig {
 }
 
 export const SPORTS: Record<SportType, SportConfig> = {
-  football: {
-    id: 'football',
+  [SportType.Football]: {
+    id: SportType.Football,
     label: 'Football',
     emoji: '⚽',
     color: '#22c55e',
@@ -20,8 +20,8 @@ export const SPORTS: Record<SportType, SportConfig> = {
     defaultDuration: 90,
     minPlayers: 14,
   },
-  mini_football_5v5: {
-    id: 'mini_football_5v5',
+  [SportType.MiniFootball5v5]: {
+    id: SportType.MiniFootball5v5,
     label: 'Mini Football 5v5',
     emoji: '⚽',
     color: '#3b82f6',
@@ -29,8 +29,8 @@ export const SPORTS: Record<SportType, SportConfig> = {
     defaultDuration: 60,
     minPlayers: 6,
   },
-  mini_football_8v8: {
-    id: 'mini_football_8v8',
+  [SportType.MiniFootball8v8]: {
+    id: SportType.MiniFootball8v8,
     label: 'Mini Football 8v8',
     emoji: '⚽',
     color: '#8b5cf6',
@@ -38,8 +38,8 @@ export const SPORTS: Record<SportType, SportConfig> = {
     defaultDuration: 70,
     minPlayers: 10,
   },
-  padel: {
-    id: 'padel',
+  [SportType.Padel]: {
+    id: SportType.Padel,
     label: 'Padel',
     emoji: '🎾',
     color: '#f59e0b',
@@ -47,8 +47,8 @@ export const SPORTS: Record<SportType, SportConfig> = {
     defaultDuration: 90,
     minPlayers: 2,
   },
-  tennis: {
-    id: 'tennis',
+  [SportType.Tennis]: {
+    id: SportType.Tennis,
     label: 'Tennis',
     emoji: '🎾',
     color: '#ef4444',
@@ -56,8 +56,8 @@ export const SPORTS: Record<SportType, SportConfig> = {
     defaultDuration: 60,
     minPlayers: 2,
   },
-  basketball: {
-    id: 'basketball',
+  [SportType.Basketball]: {
+    id: SportType.Basketball,
     label: 'Basketball',
     emoji: '🏀',
     color: '#f97316',
@@ -65,8 +65,8 @@ export const SPORTS: Record<SportType, SportConfig> = {
     defaultDuration: 60,
     minPlayers: 6,
   },
-  volleyball: {
-    id: 'volleyball',
+  [SportType.Volleyball]: {
+    id: SportType.Volleyball,
     label: 'Volleyball',
     emoji: '🏐',
     color: '#06b6d4',
@@ -74,8 +74,8 @@ export const SPORTS: Record<SportType, SportConfig> = {
     defaultDuration: 60,
     minPlayers: 6,
   },
-  other: {
-    id: 'other',
+  [SportType.Other]: {
+    id: SportType.Other,
     label: 'Other',
     emoji: '🏅',
     color: '#6b7280',

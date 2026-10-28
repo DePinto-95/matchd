@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase/client';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import type { Profile } from '@matchd/shared/types';
+import { FriendRelationKind } from '@matchd/shared/enums';
 
 export default function InviteFriendsPage() {
   const router = useRouter();
@@ -139,25 +140,25 @@ export default function InviteFriendsPage() {
                       <p className="text-xs text-text-muted">@{p.username}</p>
                     </div>
                   </Link>
-                  {relation.kind === 'none' && (
+                  {relation.kind === FriendRelationKind.None && (
                     <Button size="sm" loading={actingOn === p.id} onClick={() => handleSendRequest(p.id)}>
                       <UserPlus className="w-4 h-4" />
                       Add
                     </Button>
                   )}
-                  {relation.kind === 'pending_sent' && (
+                  {relation.kind === FriendRelationKind.PendingSent && (
                     <Button variant="secondary" size="sm" loading={actingOn === relation.friendshipId} onClick={() => handleCancel(relation.friendshipId)}>
                       <Clock className="w-4 h-4" />
                       Pending
                     </Button>
                   )}
-                  {relation.kind === 'pending_received' && (
+                  {relation.kind === FriendRelationKind.PendingReceived && (
                     <Button size="sm" loading={actingOn === relation.friendshipId} onClick={() => handleAccept(relation.friendshipId)}>
                       <UserCheck className="w-4 h-4" />
                       Accept
                     </Button>
                   )}
-                  {relation.kind === 'friends' && (
+                  {relation.kind === FriendRelationKind.Friends && (
                     <Button variant="ghost" size="sm" disabled>
                       <UserCheck className="w-4 h-4" />
                       Friends

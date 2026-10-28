@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { Match, SportType } from '../types';
+import { MatchStatus } from '../enums';
 
 interface MatchFilters {
   sport: SportType | 'all';
@@ -49,7 +50,7 @@ export const createMatchStore = (supabase: SupabaseClient, options: MatchStoreOp
       if (filters.showPast) {
         query = query.lt('scheduled_at', now).order('scheduled_at', { ascending: false });
       } else {
-        query = query.in('status', ['open', 'full']).gte('scheduled_at', now).order('scheduled_at', { ascending: true });
+        query = query.in('status', [MatchStatus.Open, MatchStatus.Full]).gte('scheduled_at', now).order('scheduled_at', { ascending: true });
       }
 
       if (filters.sport !== 'all') {

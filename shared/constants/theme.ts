@@ -1,3 +1,16 @@
+import { SportType } from '../enums';
+
+const sportColors: Record<SportType, string> = {
+  [SportType.Football]: '#22c55e',
+  [SportType.MiniFootball5v5]: '#3b82f6',
+  [SportType.MiniFootball8v8]: '#8b5cf6',
+  [SportType.Padel]: '#f59e0b',
+  [SportType.Tennis]: '#ef4444',
+  [SportType.Basketball]: '#f97316',
+  [SportType.Volleyball]: '#06b6d4',
+  [SportType.Other]: '#6b7280',
+};
+
 export const theme = {
   colors: {
     background: '#0a0a0f',
@@ -17,16 +30,7 @@ export const theme = {
       good: '#22c55e',
       elite: '#eab308',
     },
-    sports: {
-      football: '#22c55e',
-      mini_football_5v5: '#3b82f6',
-      mini_football_8v8: '#8b5cf6',
-      padel: '#f59e0b',
-      tennis: '#ef4444',
-      basketball: '#f97316',
-      volleyball: '#06b6d4',
-      other: '#6b7280',
-    },
+    sports: sportColors,
   },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48 },
   radius: { sm: 8, md: 12, lg: 16, xl: 24, full: 9999 },

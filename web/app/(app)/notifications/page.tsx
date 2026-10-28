@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck, Users, Share2, Star, X, Trophy, HelpCircle, Trash2, MailOpen, Mail } from 'lucide-react';
 import { SPORTS } from '@matchd/shared/constants/sports';
+import { NotificationType } from '@matchd/shared/enums';
 import type { SportType } from '@matchd/shared/types';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuthStore } from '@/stores/authStore';
@@ -79,11 +80,11 @@ export default function NotificationsPage() {
       ) : (
         <div className="flex flex-col gap-2">
           {notifications.map((n) => {
-            const isFriendType = n.type === 'friend_request' || n.type === 'friend_accepted';
-            const isMatchInvite = n.type === 'match_invite';
-            const isRatePlayers = n.type === 'rate_players';
-            const isMatchCompleted    = n.type === 'match_completed';
-            const isMatchHappenedCheck = n.type === 'match_happened_check';
+            const isFriendType = n.type === NotificationType.FriendRequest || n.type === NotificationType.FriendAccepted;
+            const isMatchInvite = n.type === NotificationType.MatchInvite;
+            const isRatePlayers = n.type === NotificationType.RatePlayers;
+            const isMatchCompleted    = n.type === NotificationType.MatchCompleted;
+            const isMatchHappenedCheck = n.type === NotificationType.MatchHappenedCheck;
             const sport = (isMatchInvite || isRatePlayers || isMatchCompleted || isMatchHappenedCheck)
               ? (n.data as { sport?: SportType })?.sport
               : undefined;

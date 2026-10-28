@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
 import { Profile } from '../types';
+import { AccountType } from '../enums';
 
 interface AuthState {
   session: Session | null;
@@ -50,7 +51,7 @@ export const createAuthStore = (supabase: SupabaseClient) =>
         authUser.user?.user_metadata?.username ?? `user_${userId.slice(0, 6)}`;
       const { data: newProfile } = await supabase
         .from('profiles')
-        .upsert({ id: userId, account_type: 'player', username })
+        .upsert({ id: userId, account_type: AccountType.Player, username })
         .select()
         .single();
       set({ profile: newProfile ?? null, profileLoading: false });

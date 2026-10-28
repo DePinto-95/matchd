@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { MatchResult, MatchWinnerSide } from '@matchd/shared/types';
+import { MatchResult } from '@matchd/shared/types';
+import { MatchResultStatus, MatchWinnerSide, TeamSide } from '@matchd/shared/enums';
 
 export const useMatchResult = (matchId: string) => {
   const [result, setResult] = useState<MatchResult | null>(null);
@@ -50,7 +51,7 @@ export const useMatchResult = (matchId: string) => {
 
   const submitResult = async (
     submittedBy: string,
-    submitterTeam: 'home' | 'away',
+    submitterTeam: TeamSide,
     homeScore: number,
     awayScore: number,
     winnerSide: MatchWinnerSide,
@@ -65,7 +66,7 @@ export const useMatchResult = (matchId: string) => {
         home_score: homeScore,
         away_score: awayScore,
         winner_side: winnerSide,
-        status: 'submitted',
+        status: MatchResultStatus.Submitted,
       })
       .select()
       .single();
@@ -80,7 +81,7 @@ export const useMatchResult = (matchId: string) => {
     setSubmitting(true);
     const { data, error } = await supabase
       .from('match_results')
-      .update({ status: 'confirmed' })
+      .update({ status: MatchResultStatus.Confirmed })
       .eq('id', resultId)
       .select()
       .single();
@@ -102,7 +103,7 @@ export const useMatchResult = (matchId: string) => {
     const { data, error } = await supabase
       .from('match_results')
       .update({
-        status: 'disputed',
+        status: MatchResultStatus.Disputed,
         counter_submitted_by: counterBy,
         counter_home_score: counterHome,
         counter_away_score: counterAway,
@@ -122,7 +123,7 @@ export const useMatchResult = (matchId: string) => {
     setSubmitting(true);
     const { data, error } = await supabase
       .from('match_results')
-      .update({ status: 'confirmed' })
+      .update({ status: MatchResultStatus.Confirmed })
       .eq('id', resultId)
       .select()
       .single();
@@ -137,7 +138,7 @@ export const useMatchResult = (matchId: string) => {
     setSubmitting(true);
     const { data, error } = await supabase
       .from('match_results')
-      .update({ status: 'abandoned' })
+      .update({ status: MatchResultStatus.Abandoned })
       .eq('id', resultId)
       .select()
       .single();

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase/client';
-import type { Friendship, FriendRelation, ReportReason, Profile } from '@matchd/shared/types';
+import type { Friendship, FriendRelation, Profile } from '@matchd/shared/types';
+import { FriendRelationKind, FriendshipStatus, NotificationType, ReportReason, SportType } from '@matchd/shared/enums';
 
 type AcceptedRow = Omit<Friendship, 'profiles'> & {
   requester: Profile;
@@ -25,7 +26,7 @@ interface FriendStore {
   sendMatchInvites: (
     senderUsername: string,
     friendIds: string[],
-    match: { id: string; sport: string; title: string; invite_code?: string | null }
+    match: { id: string; sport: SportType; title: string; invite_code?: string | null }
   ) => Promise<void>;
   reportUser: (reporterId: string, reportedId: string, reason: ReportReason, details?: string) => Promise<void>;
 }
@@ -40,12 +41,12 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
   getRelation: (otherUserId) => {
     const { pendingOut, pendingIn, friends } = get();
     const out = pendingOut.find(f => f.addressee_id === otherUserId);
-    if (out) return { kind: 'pending_sent', friendshipId: out.id };
+    if (out) return { kind: FriendRelationKind.PendingSent, friendshipId: out.id };
     const incoming = pendingIn.find(f => f.requester_id === otherUserId);
-    if (incoming) return { kind: 'pending_received', friendshipId: incoming.id };
+    if (incoming) return { kind: FriendRelationKind.PendingReceived, friendshipId: incoming.id };
     const friend = friends.find(f => f.requester_id === otherUserId || f.addressee_id === otherUserId);
-    if (friend) return { kind: 'friends', friendshipId: friend.id };
-    return { kind: 'none' };
+    if (friend) return { kind: FriendRelationKind.Friends, friendshipId: friend.id };
+    return { kind: FriendRelationKind.None };
   },
 
   fetchFriends: async (userId) => {
@@ -55,17 +56,17 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
         .from('friendships')
         .select('*, requester:requester_id(*), addressee:addressee_id(*)')
         .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-        .eq('status', 'accepted'),
+        .eq('status', FriendshipStatus.Accepted),
       supabase
         .from('friendships')
         .select('*, profiles:requester_id(*)')
         .eq('addressee_id', userId)
-        .eq('status', 'pending'),
+        .eq('status', FriendshipStatus.Pending),
       supabase
         .from('friendships')
         .select('*, profiles:addressee_id(*)')
         .eq('requester_id', userId)
-        .eq('status', 'pending'),
+        .eq('status', FriendshipStatus.Pending),
     ]);
 
     const accepted = ((acceptedRes.data ?? []) as unknown as AcceptedRow[]).map(f => ({
@@ -88,14 +89,14 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
   sendRequest: async (currentUserId, targetId, senderUsername) => {
     const { data, error } = await supabase
       .from('friendships')
-      .insert({ requester_id: currentUserId, addressee_id: targetId, status: 'pending' })
+      .insert({ requester_id: currentUserId, addressee_id: targetId, status: FriendshipStatus.Pending })
       .select()
       .single();
     if (error) { toast.error(error.message); return; }
 
     await supabase.from('notifications').insert({
       user_id: targetId,
-      type: 'friend_request',
+      type: NotificationType.FriendRequest,
       title: `${senderUsername} sent you a friend request`,
       body: null,
       data: { friendship_id: data.id, sender_id: currentUserId },
@@ -115,7 +116,7 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
   acceptRequest: async (friendshipId, acceptorUsername) => {
     const { data, error } = await supabase
       .from('friendships')
-      .update({ status: 'accepted' })
+      .update({ status: FriendshipStatus.Accepted })
       .eq('id', friendshipId)
       .select()
       .single();
@@ -123,7 +124,7 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
 
     await supabase.from('notifications').insert({
       user_id: data.requester_id,
-      type: 'friend_accepted',
+      type: NotificationType.FriendAccepted,
       title: `${acceptorUsername} accepted your friend request`,
       body: null,
       data: { friendship_id: friendshipId },
@@ -135,7 +136,7 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
       return {
         pendingIn: s.pendingIn.filter(f => f.id !== friendshipId),
         pendingInCount: Math.max(0, s.pendingInCount - 1),
-        friends: accepted ? [...s.friends, { ...accepted, status: 'accepted' as const }] : s.friends,
+        friends: accepted ? [...s.friends, { ...accepted, status: FriendshipStatus.Accepted }] : s.friends,
       };
     });
     toast.success('Friend request accepted!');
@@ -160,7 +161,7 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
   sendMatchInvites: async (senderUsername, friendIds, match) => {
     const rows = friendIds.map(fid => ({
       user_id: fid,
-      type: 'match_invite',
+      type: NotificationType.MatchInvite,
       title: `${senderUsername} invited you to a match`,
       body: match.title,
       data: { match_id: match.id, sport: match.sport, title: match.title, invite_code: match.invite_code ?? undefined },

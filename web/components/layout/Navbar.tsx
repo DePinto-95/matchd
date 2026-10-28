@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { Home, Search, Plus, Bell, User, LogOut, Menu, X, Zap, Users } from 'lucide-react';
+import { AccountType } from '@matchd/shared/enums';
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useFriendStore } from '@/stores/friendStore';
@@ -115,7 +116,7 @@ export function Navbar() {
                         <User className="w-4 h-4" />
                         My Profile
                       </Link>
-                      {profile?.account_type === 'venue' && (
+                      {profile?.account_type === AccountType.Venue && (
                         <Link
                           href="/venues/dashboard"
                           onClick={() => setProfileOpen(false)}

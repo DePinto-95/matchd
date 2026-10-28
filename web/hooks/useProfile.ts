@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { isMatchPast } from '@matchd/shared/lib/helpers';
 import { Profile, PlayerRating, Match } from '@matchd/shared/types';
+import { MatchStatus, ParticipantStatus } from '@matchd/shared/enums';
 
 export const useProfile = (userId?: string) => {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -27,7 +28,7 @@ export const useProfile = (userId?: string) => {
         .from('match_participants')
         .select('matches(sport, scheduled_at, duration_minutes, status)')
         .eq('player_id', id)
-        .eq('status', 'confirmed'),
+        .eq('status', ParticipantStatus.Confirmed),
     ]);
     setProfile(profileRes.data ?? null);
     setRatings(ratingsRes.data ?? []);
@@ -42,7 +43,7 @@ export const useProfile = (userId?: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const row of (playedRes.data ?? []) as any[]) {
       const m = row.matches;
-      if (!m || m.status === 'cancelled') continue;
+      if (!m || m.status === MatchStatus.Cancelled) continue;
       if (!isMatchPast(m.scheduled_at, m.duration_minutes)) continue;
       counts[m.sport] = (counts[m.sport] ?? 0) + 1;
     }

@@ -11,12 +11,13 @@ import { Zap, Users, Building2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { AccountType } from '@matchd/shared/enums';
 
 const schema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(30),
   email: z.string().email('Invalid email'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
-  accountType: z.enum(['player', 'venue']),
+  accountType: z.enum(AccountType),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -27,7 +28,7 @@ export default function RegisterPage() {
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { accountType: 'player' },
+    defaultValues: { accountType: AccountType.Player },
   });
 
   const accountType = watch('accountType');
@@ -79,23 +80,23 @@ export default function RegisterPage() {
           <div className="grid grid-cols-2 gap-3 mb-6">
             <button
               type="button"
-              onClick={() => setValue('accountType', 'player')}
+              onClick={() => setValue('accountType', AccountType.Player)}
               className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all
-                ${accountType === 'player' ? 'border-brand bg-brand/10' : 'border-border hover:border-text-muted'}`}
+                ${accountType === AccountType.Player ? 'border-brand bg-brand/10' : 'border-border hover:border-text-muted'}`}
             >
-              <Users className={`w-6 h-6 ${accountType === 'player' ? 'text-brand' : 'text-text-muted'}`} />
-              <span className={`text-sm font-medium ${accountType === 'player' ? 'text-brand' : 'text-text-muted'}`}>
+              <Users className={`w-6 h-6 ${accountType === AccountType.Player ? 'text-brand' : 'text-text-muted'}`} />
+              <span className={`text-sm font-medium ${accountType === AccountType.Player ? 'text-brand' : 'text-text-muted'}`}>
                 Player
               </span>
             </button>
             <button
               type="button"
-              onClick={() => setValue('accountType', 'venue')}
+              onClick={() => setValue('accountType', AccountType.Venue)}
               className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all
-                ${accountType === 'venue' ? 'border-brand bg-brand/10' : 'border-border hover:border-text-muted'}`}
+                ${accountType === AccountType.Venue ? 'border-brand bg-brand/10' : 'border-border hover:border-text-muted'}`}
             >
-              <Building2 className={`w-6 h-6 ${accountType === 'venue' ? 'text-brand' : 'text-text-muted'}`} />
-              <span className={`text-sm font-medium ${accountType === 'venue' ? 'text-brand' : 'text-text-muted'}`}>
+              <Building2 className={`w-6 h-6 ${accountType === AccountType.Venue ? 'text-brand' : 'text-text-muted'}`} />
+              <span className={`text-sm font-medium ${accountType === AccountType.Venue ? 'text-brand' : 'text-text-muted'}`}>
                 Venue
               </span>
             </button>

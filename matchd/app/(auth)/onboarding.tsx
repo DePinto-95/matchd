@@ -6,17 +6,17 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { theme } from '@matchd/shared/constants/theme';
 import { Button } from '@/components/ui/Button';
-import { AccountType } from '@matchd/shared/types';
+import { AccountType } from '@matchd/shared/enums';
 
 const OPTIONS: { type: AccountType; emoji: string; title: string; description: string }[] = [
   {
-    type: 'player',
+    type: AccountType.Player,
     emoji: '⚽',
     title: 'Player',
     description: 'Find and join matches, build your rating, play with friends and strangers.',
   },
   {
-    type: 'venue',
+    type: AccountType.Venue,
     emoji: '🏟️',
     title: 'Sports Center / Venue',
     description: 'Manage your facilities, handle bookings, and list your pitches for matches.',
@@ -26,7 +26,7 @@ const OPTIONS: { type: AccountType; emoji: string; title: string; description: s
 export default function OnboardingScreen() {
   const router = useRouter();
   const { fetchProfile } = useAuthStore();
-  const [selected, setSelected] = useState<AccountType>('player');
+  const [selected, setSelected] = useState<AccountType>(AccountType.Player);
   const [loading, setLoading] = useState(false);
 
   const handleContinue = async () => {

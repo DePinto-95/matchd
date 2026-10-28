@@ -13,7 +13,8 @@ import { useMatchRealtime } from '@/hooks/useRealtime';
 import { useMatchResult } from '@/hooks/useMatchResult';
 import { SPORTS } from '@matchd/shared/constants/sports';
 import { formatMatchDate, formatPrice, isMatchPast, isReviewWindowClosed } from '@matchd/shared/lib/helpers';
-import { Match, MatchWinnerSide } from '@matchd/shared/types';
+import { Match } from '@matchd/shared/types';
+import { MatchResultStatus, MatchStatus, MatchWinnerSide, NotificationType, ParticipantStatus, TeamSide } from '@matchd/shared/enums';
 import { TeamSlots } from '@/components/match/TeamSlots';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
@@ -31,7 +32,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [joinPanelOpen, setJoinPanelOpen] = useState(false);
-  const [selectedSide, setSelectedSide] = useState<'home' | 'away' | null>(null);
+  const [selectedSide, setSelectedSide] = useState<TeamSide | null>(null);
   const [squadSpots, setSquadSpots] = useState(1);
   const [squadPanelOpen, setSquadPanelOpen] = useState(false);
   const [newTotalSpots, setNewTotalSpots] = useState(1);
@@ -189,7 +190,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       match_id: match.id,
       player_id: user.id,
       team_id: targetTeam?.id ?? null,
-      status: 'confirmed',
+      status: ParticipantStatus.Confirmed,
       extra_spots: extraSpots,
     });
 
@@ -245,14 +246,14 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const handleCancelMatch = async () => {
     if (!match) return;
     if (!confirm('This will cancel the match for all participants. Continue?')) return;
-    await supabase.from('matches').update({ status: 'cancelled' }).eq('id', match.id);
+    await supabase.from('matches').update({ status: MatchStatus.Cancelled }).eq('id', match.id);
     toast.success('Match cancelled');
     router.push('/');
   };
 
   const handleConfirmMatchHappened = async () => {
     if (!match) return;
-    await supabase.from('matches').update({ status: 'completed' }).eq('id', match.id);
+    await supabase.from('matches').update({ status: MatchStatus.Completed }).eq('id', match.id);
     await supabase.rpc('notify_match_completion', { p_match_id: match.id });
     toast.success('Match confirmed! Players will be notified to rate and report the result.');
     loadMatch();
@@ -261,7 +262,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   const handleConfirmMatchDidntHappen = async () => {
     if (!match) return;
     if (!confirm('This will cancel the match for all participants. Continue?')) return;
-    await supabase.from('matches').update({ status: 'cancelled' }).eq('id', match.id);
+    await supabase.from('matches').update({ status: MatchStatus.Cancelled }).eq('id', match.id);
     toast.success('Match marked as not happened.');
     router.push('/');
   };
@@ -330,31 +331,31 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   const sport = SPORTS[match.sport];
-  const homeTeam = match.match_teams?.find((t) => t.side === 'home');
-  const awayTeam = match.match_teams?.find((t) => t.side === 'away');
+  const homeTeam = match.match_teams?.find((t) => t.side === TeamSide.Home);
+  const awayTeam = match.match_teams?.find((t) => t.side === TeamSide.Away);
   const homeCount = getTeamOccupancy(homeTeam?.id, awayTeam?.id);
   const awayCount = getTeamOccupancy(awayTeam?.id, homeTeam?.id);
   const homeOpen = match.team_size - homeCount;
   const awayOpen = match.team_size - awayCount;
-  const selectedTeamOpen = selectedSide === 'home' ? homeOpen : selectedSide === 'away' ? awayOpen : 0;
+  const selectedTeamOpen = selectedSide === TeamSide.Home ? homeOpen : selectedSide === TeamSide.Away ? awayOpen : 0;
 
-  const displayStatus = match.status === 'open' && isFull ? 'full' : match.status;
-  const statusVariant = displayStatus === 'open' ? 'success' : displayStatus === 'full' ? 'warning' : 'error';
+  const displayStatus = match.status === MatchStatus.Open && isFull ? MatchStatus.Full : match.status;
+  const statusVariant = displayStatus === MatchStatus.Open ? 'success' : displayStatus === MatchStatus.Full ? 'warning' : 'error';
 
   // Result section helpers
   const myTeamSide = match.match_teams?.find((t) => t.id === myRow?.team_id)?.side ?? null;
   const isMyTurnToRespond =
-    (result?.status === 'submitted' && result.submitter_team !== myTeamSide) ||
-    (result?.status === 'disputed'  && result.submitter_team === myTeamSide);
+    (result?.status === MatchResultStatus.Submitted && result.submitter_team !== myTeamSide) ||
+    (result?.status === MatchResultStatus.Disputed  && result.submitter_team === myTeamSide);
   const isWaitingForOther =
-    (result?.status === 'submitted' && result.submitter_team === myTeamSide) ||
-    (result?.status === 'disputed'  && result.submitter_team !== myTeamSide);
+    (result?.status === MatchResultStatus.Submitted && result.submitter_team === myTeamSide) ||
+    (result?.status === MatchResultStatus.Disputed  && result.submitter_team !== myTeamSide);
 
   const deriveWinner = (home: string, away: string): MatchWinnerSide => {
     const h = parseInt(home), a = parseInt(away);
-    if (h > a) return 'home';
-    if (a > h) return 'away';
-    return 'draw';
+    if (h > a) return MatchWinnerSide.Home;
+    if (a > h) return MatchWinnerSide.Away;
+    return MatchWinnerSide.Draw;
   };
 
   const handleSubmitResult = async () => {
@@ -380,7 +381,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
     if (!ok) { toast.error(error ?? 'Failed to dispute'); return; }
     await supabase.from('notifications').insert({
       user_id: result.submitted_by,
-      type: 'result_disputed',
+      type: NotificationType.ResultDisputed,
       title: 'Your result was disputed',
       body: `Your reported score for "${match.title}" was disputed. Review and respond.`,
       data: { match_id: match.id, sport: match.sport },
@@ -474,7 +475,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
       )}
 
       {/* Did the match happen? — shown to creator when match ended without filling up */}
-      {isPast && isCreator && match.status === 'open' && (
+      {isPast && isCreator && match.status === MatchStatus.Open && (
         <div className="bg-surface border border-brand/30 rounded-2xl p-6 flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-brand/10 flex items-center justify-center flex-shrink-0">
@@ -511,7 +512,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
 
           <div className="px-6 pb-5 flex flex-col gap-4">
             {/* CONFIRMED */}
-            {result?.status === 'confirmed' && (
+            {result?.status === MatchResultStatus.Confirmed && (
               <div className="flex items-center gap-3 p-4 bg-success/5 border border-success/30 rounded-xl">
                 <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
                 <div>
@@ -521,7 +522,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
                     {' – '}
                     {result.counter_submitted_by ? result.counter_away_score : result.away_score} Away
                     {' · '}
-                    {(result.counter_submitted_by ? result.counter_winner_side : result.winner_side) === 'draw'
+                    {(result.counter_submitted_by ? result.counter_winner_side : result.winner_side) === MatchWinnerSide.Draw
                       ? 'Draw'
                       : `${(result.counter_submitted_by ? result.counter_winner_side : result.winner_side) === 'home' ? 'Home' : 'Away'} team wins`}
                   </p>
@@ -530,7 +531,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
             )}
 
             {/* ABANDONED */}
-            {result?.status === 'abandoned' && (
+            {result?.status === MatchResultStatus.Abandoned && (
               <div className="flex items-center gap-3 p-4 bg-warning/5 border border-warning/30 rounded-xl">
                 <AlertCircle className="w-5 h-5 text-warning flex-shrink-0" />
                 <div>
@@ -581,7 +582,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
             )}
 
             {/* SUBMITTED — waiting for other team, or user can respond */}
-            {result?.status === 'submitted' && (
+            {result?.status === MatchResultStatus.Submitted && (
               <>
                 {isWaitingForOther && (
                   <div className="flex items-center gap-3 p-4 bg-surface-alt border border-border rounded-xl">
@@ -602,7 +603,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
                         {result.home_score} – {result.away_score}
                       </p>
                       <p className="text-xs text-text-muted">
-                        {result.winner_side === 'draw' ? 'Draw' : `${result.winner_side === 'home' ? 'Home' : 'Away'} team wins`}
+                        {result.winner_side === MatchWinnerSide.Draw ? 'Draw' : `${result.winner_side === MatchWinnerSide.Home ? 'Home' : 'Away'} team wins`}
                       </p>
                     </div>
                     {!disputePanelOpen ? (
@@ -646,7 +647,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
             )}
 
             {/* DISPUTED — Team A responds to counter */}
-            {result?.status === 'disputed' && (
+            {result?.status === MatchResultStatus.Disputed && (
               <>
                 {isWaitingForOther && (
                   <div className="flex items-center gap-3 p-4 bg-surface-alt border border-border rounded-xl">
@@ -667,7 +668,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
                         {result.counter_home_score} – {result.counter_away_score}
                       </p>
                       <p className="text-xs text-text-muted">
-                        {result.counter_winner_side === 'draw' ? 'Draw' : `${result.counter_winner_side === 'home' ? 'Home' : 'Away'} team wins`}
+                        {result.counter_winner_side === MatchWinnerSide.Draw ? 'Draw' : `${result.counter_winner_side === MatchWinnerSide.Home ? 'Home' : 'Away'} team wins`}
                       </p>
                     </div>
                     <p className="text-xs text-text-muted px-1">
@@ -713,8 +714,8 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
           <h3 className="font-semibold text-text">Choose your side</h3>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { side: 'home' as const, label: homeTeam?.name ?? 'Home', count: homeCount, open: homeOpen, color: '#3b82f6' },
-              { side: 'away' as const, label: awayTeam?.name ?? 'Away', count: awayCount, open: awayOpen, color: '#f97316' },
+              { side: TeamSide.Home, label: homeTeam?.name ?? 'Home', count: homeCount, open: homeOpen, color: '#3b82f6' },
+              { side: TeamSide.Away, label: awayTeam?.name ?? 'Away', count: awayCount, open: awayOpen, color: '#f97316' },
             ].map(({ side, label, count, open, color }) => {
               const selected = selectedSide === side;
               const full = open === 0;
@@ -878,7 +879,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
           </Link>
         )}
 
-        {!isPast && !isParticipant && !isFull && match.status === 'open' && (!match.is_private || codeVerified) && (
+        {!isPast && !isParticipant && !isFull && match.status === MatchStatus.Open && (!match.is_private || codeVerified) && (
           joinPanelOpen ? (
             <>
               <Button variant="secondary" onClick={() => { setJoinPanelOpen(false); setSelectedSide(null); setSquadSpots(1); }} className="flex-1">
@@ -890,7 +891,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
                 disabled={!selectedSide}
                 className="flex-1"
               >
-                Join {selectedSide === 'home' ? 'Home' : selectedSide === 'away' ? 'Away' : '...'}
+                Join {selectedSide === TeamSide.Home ? 'Home' : selectedSide === TeamSide.Away ? 'Away' : '...'}
               </Button>
             </>
           ) : (
@@ -921,7 +922,7 @@ export default function MatchDetailPage({ params }: { params: Promise<{ id: stri
           </>
         )}
 
-        {isCreator && match.status !== 'cancelled' && !isPast && (
+        {isCreator && match.status !== MatchStatus.Cancelled && !isPast && (
           <>
             <Button
               variant="secondary"

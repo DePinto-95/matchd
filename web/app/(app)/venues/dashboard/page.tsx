@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabase/client';
 import { Booking } from '@matchd/shared/types';
+import { AccountType, BookingStatus } from '@matchd/shared/enums';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
@@ -34,14 +35,14 @@ export default function VenueDashboardPage() {
     setLoading(false);
   };
 
-  const updateStatus = async (id: string, status: 'confirmed' | 'cancelled') => {
+  const updateStatus = async (id: string, status: BookingStatus.Confirmed | BookingStatus.Cancelled) => {
     const { error } = await supabase.from('bookings').update({ status }).eq('id', id);
     if (error) { toast.error('Failed to update booking'); return; }
     toast.success(`Booking ${status}`);
     fetchBookings();
   };
 
-  if (profile?.account_type !== 'venue') {
+  if (profile?.account_type !== AccountType.Venue) {
     return (
       <div className="text-center py-32">
         <p className="text-text-muted">This page is only accessible to venue accounts.</p>
@@ -50,7 +51,7 @@ export default function VenueDashboardPage() {
   }
 
   const statusVariant = (s: string) =>
-    s === 'confirmed' ? 'success' : s === 'cancelled' ? 'error' : 'warning';
+    s === BookingStatus.Confirmed ? 'success' : s === BookingStatus.Cancelled ? 'error' : 'warning';
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col gap-6">
@@ -87,10 +88,10 @@ export default function VenueDashboardPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant={statusVariant(b.status)}>{b.status}</Badge>
-                {b.status === 'pending' && (
+                {b.status === BookingStatus.Pending && (
                   <>
-                    <Button size="sm" onClick={() => updateStatus(b.id, 'confirmed')}>Confirm</Button>
-                    <Button size="sm" variant="danger" onClick={() => updateStatus(b.id, 'cancelled')}>Decline</Button>
+                    <Button size="sm" onClick={() => updateStatus(b.id, BookingStatus.Confirmed)}>Confirm</Button>
+                    <Button size="sm" variant="danger" onClick={() => updateStatus(b.id, BookingStatus.Cancelled)}>Decline</Button>
                   </>
                 )}
               </div>
